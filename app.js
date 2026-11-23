@@ -538,7 +538,7 @@ function route() {
   };
   const draw = dt => {
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#fffaf0";
+    ctx.fillStyle = "#fff3dc";
     for (const f of flakes) {
       f.y += f.v * dt; f.ph += dt * .9;
       if (f.y > h + 8) Object.assign(f, make(true));

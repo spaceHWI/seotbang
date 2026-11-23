@@ -208,7 +208,7 @@ dialog::backdrop { background: rgba(6,30,21,.72); }
 }
 /* 눈 */
 #snow { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
-.snowbank { position: fixed; left: 0; right: 0; bottom: 0; height: 9px; z-index: 4; pointer-events: none; background: #fffaf0; border-radius: 60% 40% 0 0 / 100% 100% 0 0; }
+.snowbank { position: fixed; left: 0; right: 0; bottom: 0; height: 9px; z-index: 4; pointer-events: none; background: var(--cream); border-radius: 60% 40% 0 0 / 100% 100% 0 0; }
 body { padding-bottom: 6.5rem; }
 
 /* 달리는 산타 */
@@ -217,10 +217,10 @@ body { padding-bottom: 6.5rem; }
 .s-suit { fill: var(--track); } .s-suit-b { fill: var(--track-deep); }
 .s-limb, .s-limb-b { fill: none; stroke: var(--track); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
 .s-limb-b { stroke: var(--track-deep); }
-.s-fur { fill: #fffaf0; } .s-skin { fill: #f6c7a1; } .s-nose { fill: #e8866a; } .s-eye { fill: var(--ink); }
+.s-fur { fill: var(--cream); } .s-skin { fill: var(--peach); } .s-nose { fill: var(--track-deep); } .s-eye { fill: var(--forest-deep); }
 .s-belt, .s-mitt, .s-shoe { fill: var(--forest-deep); } .s-sole { fill: var(--peach); } .s-buckle { fill: var(--sun); }
-.s-bib { fill: #fffaf0; } .s-bibno { fill: var(--ink); font: 700 10px var(--body); }
-.s-sack { fill: #d9a25b; } .s-sack-tie { fill: #b9803c; }
+.s-bib { fill: var(--cream); } .s-bibno { fill: var(--forest-deep); font: 700 10px var(--body); }
+.s-sack { fill: var(--sun); } .s-sack-tie { fill: var(--track-deep); }
 .santa .leg, .santa .shin, .santa .arm { transform-box: view-box; }
 .santa .leg { transform-origin: 66.5px 84px; animation: thigh .56s linear infinite; }
 .santa .shin { transform-origin: 66.5px 103px; animation: shin .56s linear infinite; }
@@ -244,11 +244,11 @@ body { padding-bottom: 6.5rem; }
 }
 
 /* 칸 아이콘 */
-.ic { width: clamp(1.25rem, 6.2vw, 2.125rem); height: auto; aspect-ratio: 1; flex: none; fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-bottom: .1em; }
+.ic { width: clamp(1.25rem, 6.2vw, 2.125rem); height: auto; aspect-ratio: 1; flex: none; fill: none; stroke: var(--forest); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-bottom: .1em; }
 .ic .f-a { fill: var(--track); } .ic .f-b { fill: var(--sun); } .ic .f-c { fill: var(--lake); } .ic .f-cell { fill: var(--cream); }
-.ic .s-a { stroke: var(--track); } .ic .s-c { stroke: #2f9a97; }
-.ic .dot { fill: var(--ink); stroke: none; } .ic .thin { stroke-width: 1.4; }
-.ic .t { font: 800 8.5px var(--body); fill: #fff; stroke: none; text-anchor: middle; } .ic .t.ink { fill: var(--ink); font-size: 8px; }
+.ic .s-a { stroke: var(--track); } .ic .s-c { stroke: var(--lake); }
+.ic .dot { fill: var(--forest); stroke: none; } .ic .thin { stroke-width: 1.4; }
+.ic .t { font: 800 8.5px var(--body); fill: var(--cream); stroke: none; text-anchor: middle; } .ic .t.ink { fill: var(--forest); font-size: 8px; }
 .sheet-ic .ic { width: 2.75rem; margin: 0; }
 .sheet-ic + h2 { margin-top: -.25rem; }
 
