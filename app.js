@@ -328,11 +328,8 @@ function viewHome() {
   }
   app.innerHTML = `
     <section class="hero">
-      <img class="hero-logo" src="assets/logo.png" alt="" width="360" height="373">
-      <div>
-        <h1>12월 미션 빙고</h1>
-        <p class="lede">달리고, 찍고, 줄을 그어요. 스물다섯 칸 가운데 몇 줄을 만들 수 있을까요.</p>
-      </div>
+      <h1>12월 미션 빙고</h1>
+      <p class="lede">달리고, 찍고, 줄을 그어요.</p>
     </section>
     ${HOWTO}
     <section class="enter">

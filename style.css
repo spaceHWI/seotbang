@@ -60,9 +60,8 @@ main { max-width: 44rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
 .demo-bar { margin: 0; padding: .375rem 1rem; background: var(--sun); color: var(--ink); font-size: .8125rem; text-align: center; }
 
 /* 시작 화면 */
-.hero { display: grid; grid-template-columns: minmax(0, 9.5rem) 1fr; gap: 1.25rem; align-items: center; }
-.hero-logo { width: 100%; height: auto; }
-.lede { margin: .75rem 0 0; font-size: 1.0625rem; max-width: 22em; }
+.hero { text-align: center; padding: .5rem 0 .25rem; }
+.lede { margin: .625rem 0 0; font-size: 1.0625rem; white-space: nowrap; }
 
 /* 참여 방법: 로고의 트랙 레인 1·2·3 */
 .howto { list-style: none; margin: 1.75rem 0 0; padding: 0; counter-reset: lane; background: var(--track-deep); border-radius: 4px; overflow: hidden; }
@@ -204,7 +203,6 @@ dialog::backdrop { background: rgba(6,30,21,.72); }
 
 @media (max-width: 26rem) {
   .brand-name { display: none; }
-  .hero { grid-template-columns: 6.5rem 1fr; gap: 1rem; }
   .cell-sub { display: none; }
   .queue li { grid-template-columns: 5.5rem 1fr; }
 }
