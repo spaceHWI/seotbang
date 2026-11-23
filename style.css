@@ -242,3 +242,20 @@ body { padding-bottom: 6.5rem; }
   .lines .fresh line { animation: none; }
   #toast { transition: none; }
 }
+
+/* 칸 아이콘 */
+.ic { width: clamp(1.25rem, 6.2vw, 2.125rem); height: auto; aspect-ratio: 1; flex: none; fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-bottom: .1em; }
+.ic .f-a { fill: var(--track); } .ic .f-b { fill: var(--sun); } .ic .f-c { fill: var(--lake); } .ic .f-cell { fill: var(--cream); }
+.ic .s-a { stroke: var(--track); } .ic .s-c { stroke: #2f9a97; }
+.ic .dot { fill: var(--ink); stroke: none; } .ic .thin { stroke-width: 1.4; }
+.ic .t { font: 800 8.5px var(--body); fill: #fff; stroke: none; text-anchor: middle; } .ic .t.ink { fill: var(--ink); font-size: 8px; }
+.sheet-ic .ic { width: 2.75rem; margin: 0; }
+.sheet-ic + h2 { margin-top: -.25rem; }
+
+/* 비밀번호 입력칸 */
+.pw { position: relative; display: block; }
+.pw input { padding-right: 3rem; }
+.eye { position: absolute; top: 0; right: 0; bottom: 0; width: 3rem; display: grid; place-items: center; background: none; border: 0; cursor: pointer; color: var(--forest); border-radius: 4px; }
+.eye svg { width: 1.375rem; height: 1.375rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.eye[aria-pressed=true] .slash { display: none; }
+[hidden] { display: none !important; }

@@ -35,6 +35,36 @@ const CELLS = [
   ["월 마일리지 200km", ""],
 ];
 
+// 칸 아이콘 (32x32, 선 굵기 2). f-a 주황, f-b 노랑, f-c 청록 채움 / s-a, s-c 선 색
+const ICONS = [
+  /* 0 단체사진 */ '<path d="M4 9V5h4M28 9V5h-4M4 23v4h4M28 23v4h-4"/><circle cx="8.5" cy="14.5" r="2.3"/><circle cx="23.5" cy="14.5" r="2.3"/><path d="M9.5 24c0-4 3-6.5 6.5-6.500s6.5 2.5 6.5 6.5"/><circle class="f-a" cx="16" cy="12" r="3.3"/>',
+  /* 1 누적 상승 */ '<path d="M2.5 27l9-15 4.5 7 3-4 7 12z"/><path class="s-a" d="M25 13V4M21.5 7.500L25 4l3.5 3.5"/>',
+  /* 2 오름 2개 */ '<path class="f-b" d="M2 26c2.5-8 6-12 9.5-12 3 0 5.5 3 7.5 7"/><path class="f-c" d="M11 26c2-6.5 5-10 8.5-10s7 3.5 10.5 10z"/><path d="M2 26h28"/>',
+  /* 3 해안도로 일출 */ '<path class="f-b" d="M9 18a7 7 0 0114 0z"/><path d="M16 5v3M6.5 9l2 2M25.5 9l-2 2M3 18h26"/><path class="s-c" d="M4 23c2-2 4-2 6 0s4 2 6 0 4-2 6 0 4 2 6 0M7 27.500c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>',
+  /* 4 백록담 */ '<path d="M2.5 27L10 12.500c.8-1.5 2-1.8 3.2-1l2.8 1.8 2.8-1.800c1.2-.8 2.4-.5 3.2 1L29.5 27z"/><ellipse class="f-c" cx="16" cy="17.5" rx="4.5" ry="1.8"/>',
+  /* 5 야간 트레일 */ '<path class="f-b" d="M22.5 3.500a6.5 6.5 0 106 8.5 5 5 0 01-6-8.500z"/><path d="M8 5v4M6 7h4"/><path d="M2.5 28l8.5-12 4 5 3-3.5 8.5 10.500z"/>',
+  /* 6 셀카 */ '<rect x="9" y="3" width="14" height="26" rx="3"/><circle class="f-b" cx="16" cy="13" r="4.3"/><path d="M14.2 13.800c1 1 2.6 1 3.6 0"/><circle class="f-a" cx="16" cy="24" r="1.4"/>',
+  /* 7 7분대 조깅 */ '<circle cx="16" cy="18" r="9.5"/><path d="M13 3.500h6M16 3.500v5M24 9.500l2-2"/><path class="s-a" d="M16 18v-5.5"/><path d="M16 18l3.5 2"/>',
+  /* 8 처음 가는 코스 */ '<path d="M16 28.500s-8.5-8.5-8.5-14.500a8.5 8.5 0 0117 0c0 6-8.5 14.5-8.5 14.500z"/><circle class="f-a" cx="16" cy="14" r="3.2"/><path class="s-a" d="M27 2.500v4M25 4.500h4"/>',
+  /* 9 트랙벙 */ '<rect class="f-a" x="2.5" y="7.5" width="27" height="17" rx="8.5"/><rect class="f-cell" x="9" y="13" width="14" height="6" rx="3"/><path d="M16 7.500V13M16 19v5.5"/>',
+  /* 10 350km */ '<path d="M5 22c0-2 .8-3 2-3.300l3-6.2 3 1c1 3 3 5 6 5.800l6 1.500c2 .5 3 1.7 3 3.200v1H5z"/><path class="s-a" d="M5 24.800h23"/><path d="M1.5 13.500H6M1 17.500h3.5"/><path class="f-b" d="M22 2l-4 6h3.500l-1.5 5 5-7h-3.500z"/>',
+  /* 11 모닝커피 */ '<path d="M5.5 13h17v6a7 7 0 01-7 7h-3a7 7 0 01-7-7z"/><path d="M22.5 15h2a3 3 0 010 6H22M5 29.500h18"/><path class="s-a" d="M11 9.500c-1.2-1.5 1.2-2.5 0-4.500M16.5 9.500c-1.2-1.5 1.2-2.5 0-4.5"/>',
+  /* 12 연속 4일 */ '<path class="f-a" d="M16.5 2.500c.5 5 6.5 7 6.5 13.500a7 7 0 01-14 0c0-2.8 1.3-4.3 2.5-5.8.4 2 1.3 3 2.5 3 0-4 .5-7.2 2.5-10.700z"/><circle class="dot" cx="8.5" cy="28" r="1.6"/><circle class="dot" cx="13.5" cy="28" r="1.6"/><circle class="dot" cx="18.5" cy="28" r="1.6"/><circle class="dot" cx="23.5" cy="28" r="1.6"/>',
+  /* 13 풍경 사진 */ '<rect x="3" y="6" width="26" height="20" rx="2.5"/><circle class="f-b" cx="22.5" cy="12" r="2.6"/><path d="M3.5 23l6.5-7.5 5 5 3-3 10.5 8"/>',
+  /* 14 찍터벌 */ '<path d="M11 9l2-4h6l2 4"/><rect x="3" y="9" width="26" height="17" rx="3"/><circle cx="16" cy="17.5" r="5.2"/><circle class="f-a" cx="16" cy="17.5" r="2.2"/><circle class="dot" cx="24.5" cy="13" r="1"/>',
+  /* 15 새 친구 */ '<circle cx="10.5" cy="12" r="3.5"/><circle cx="22" cy="13" r="3"/><path d="M3.5 27c0-5 3-8 7-8s7 3 7 8M19 20.500c.9-.9 1.9-1.3 3-1.3 3.5 0 6 2.6 6 7.3"/><path class="f-a" d="M16.5 8c-2.2-1.6-3.3-2.7-3.3-4.100a1.8 1.8 0 013.3-1 1.8 1.8 0 013.3 1c0 1.4-1.1 2.5-3.3 4.100z"/>',
+  /* 16 돈평돈 */ '<path d="M3.5 27L16 7l12.5 20"/><path class="s-a" d="M9.5 21.500l3.2-5.200M12.7 16.300l-3.4.6M12.7 16.300l.6 3.400M19.3 16.300l3.2 5.200M22.5 21.500l-3.4-.6M22.5 21.500l.6-3.4"/><path class="f-b" d="M16 7V2.500l4 1.8-4 1.7"/><circle class="dot" cx="3.5" cy="27" r="1.6"/><circle class="dot" cx="28.5" cy="27" r="1.6"/>',
+  /* 17 아이싱 */ '<path class="s-c" d="M16 3v15M9.5 6.800l13 7.500M22.5 6.800l-13 7.500M13.5 4l2.5 2 2.5-2M13.5 17l2.5-2 2.5 2"/><path d="M3.5 24c2.1-2 4.2-2 6.3 0s4.1 2 6.2 0 4.1-2 6.2 0 4.2 2 6.3 0M3.5 28.500c2.1-2 4.2-2 6.3 0s4.1 2 6.2 0 4.1-2 6.2 0 4.2 2 6.3 0"/>',
+  /* 18 5km TT */ '<path d="M7 3.500v25.5"/><path class="f-a" d="M7 4.500h20l-4.5 6 4.5 6H7z"/><text class="t" x="14.8" y="13.7">5K</text>',
+  /* 19 주 5일 */ '<rect x="4" y="6" width="24" height="22" rx="3"/><path d="M4 12.500h24M10 3.500v5M22 3.500v5"/><circle class="f-a thin" cx="9.5" cy="17.5" r="1.9"/><circle class="f-a thin" cx="14" cy="17.5" r="1.9"/><circle class="f-a thin" cx="18.5" cy="17.5" r="1.9"/><circle class="f-a thin" cx="23" cy="17.5" r="1.9"/><circle class="f-a thin" cx="9.5" cy="23" r="1.9"/><circle class="thin" cx="14" cy="23" r="1.9"/><circle class="thin" cx="18.5" cy="23" r="1.9"/>',
+  /* 20 PB */ '<path d="M10.5 3l5.5 9.500L21.5 3"/><circle class="f-b" cx="16" cy="20.5" r="8.5"/><text class="t ink" x="16" y="23.5">PB</text>',
+  /* 21 06:00 전 */ '<circle cx="16" cy="17" r="10.5"/><path d="M7 5.500L3.5 9M25 5.500L28.5 9"/><path d="M16 17V10"/><path class="s-a" d="M16 17v5.5"/>',
+  /* 22 한라산 일출 */ '<path class="f-b" d="M9 16a7 7 0 0114 0z"/><path d="M16 3v3M6 7l2.2 2.200M26 7l-2.2 2.2"/><path class="f-cell" d="M2 28.500l10-13 4 4 4-4 10 13z"/>',
+  /* 23 소정방 폭포 */ '<path d="M3.5 4.500h9V11M28.5 4.500h-9V11"/><path class="s-c" d="M12.5 4.500V21M16 4.500v19M19.5 4.500V21"/><path d="M4.5 27c2.6-2.6 5.2-2.6 7.7 0s5.1 2.6 7.6 0 5.1-2.6 7.7 0"/>',
+  /* 24 200km */ '<path d="M5 22c0-2 .8-3 2-3.300l3-6.2 3 1c1 3 3 5 6 5.800l6 1.500c2 .5 3 1.7 3 3.200v1H5z"/><path class="s-a" d="M5 24.800h23"/><path d="M1.5 13.500H6M1 17.500h3.5"/>',
+];
+const icon = i => `<svg class="ic" viewBox="0 0 32 32" aria-hidden="true">${ICONS[i]}</svg>`;
+
 const LINES = (() => {
   const L = [];
   for (let r = 0; r < 5; r++) L.push({ cells: [0,1,2,3,4].map(c => r*5+c), x1: .12, y1: r+.5, x2: 4.88, y2: r+.5 });
@@ -200,6 +230,18 @@ function renderNav() {
   if (lo) lo.onclick = () => { if (confirm("이 기기에서 로그아웃할까요? 기록은 그대로 남아요.")) { api.logout(state.me.token).catch(() => {}); setMe(null); route(); } };
 }
 
+/* ---------- 비밀번호 입력칸 (눈 아이콘으로 보기/가리기) ---------- */
+const EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M4 4l16 16"/></svg>';
+const pwField = (name, placeholder, auto, min = 4) => `<span class="pw"><input name="${name}" type="password" minlength="${min}" maxlength="72" autocomplete="${auto}" placeholder="${placeholder}"><button type="button" class="eye" aria-label="비밀번호 보기" aria-pressed="false">${EYE}</button></span>`;
+function bindPw(root) {
+  root.querySelectorAll(".pw .eye").forEach(b => (b.onclick = () => {
+    const inp = b.previousElementSibling, show = inp.type === "password";
+    inp.type = show ? "text" : "password";
+    b.setAttribute("aria-pressed", show); b.setAttribute("aria-label", show ? "비밀번호 가리기" : "비밀번호 보기");
+    inp.focus();
+  }));
+}
+
 /* ---------- 빙고판 ---------- */
 function boardHtml(pid, mine) {
   const m = subsOf(pid), { lines } = score(pid);
@@ -209,7 +251,7 @@ function boardHtml(pid, mine) {
     const tag = st === "pending" || st === "rejected" ? `<span class="tag">${STATUS_WORD[st]}</span>` : "";
     const label = `${title}${sub ? ", " + sub : ""}${s ? ", " + STATUS_WORD[st] : ""}`;
     return `<button type="button" class="cell is-${st}" data-cell="${i}" aria-label="${esc(label)}"${bg}>
-      ${tag}<span class="cell-title">${esc(title)}</span>${sub ? `<span class="cell-sub">${esc(sub)}</span>` : ""}
+      ${tag}${st === "approved" ? "" : icon(i)}<span class="cell-title">${esc(title)}</span>${sub ? `<span class="cell-sub">${esc(sub)}</span>` : ""}
     </button>`;
   }).join("");
   const strokes = lines.map(i => {
@@ -265,6 +307,7 @@ function openCell(pid, cell, mine) {
   dlg.innerHTML = `
     <form method="dialog" class="sheet">
       <button class="close" aria-label="닫기">닫기</button>
+      <div class="sheet-ic">${icon(cell)}</div>
       <h2>${esc(title)}</h2>
       ${sub ? `<p class="cond">${esc(sub)}</p>` : ""}
       ${!mine && owner ? `<p class="by">${esc(owner.nickname)} 님의 칸</p>` : ""}
@@ -333,37 +376,43 @@ function viewHome() {
     </section>
     ${HOWTO}
     <section class="enter">
-      <div class="tabs" role="tablist">
-        <button type="button" role="tab" id="t-join" aria-selected="true">처음이에요</button>
-        <button type="button" role="tab" id="t-login" aria-selected="false">이어서 하기</button>
-      </div>
-      <form id="enter-form">
+      <form id="enter-form" novalidate>
         <label>닉네임<input name="nick" maxlength="12" autocomplete="username" required placeholder="톡방에서 쓰는 이름"></label>
-        <label>비밀번호<input name="pass" type="password" minlength="4" autocomplete="current-password" required placeholder="4자 이상"></label>
-        <p class="small" id="enter-help">비밀번호는 다른 기기에서 이어서 할 때 써요. 잊어버리면 운영진도 찾아 줄 수 없어요.</p>
-        <button class="btn" id="enter-go">빙고판 만들기</button>
+        <p class="small" id="nick-help" hidden></p>
+        <label>비밀번호${pwField("pass", "4자 이상", "current-password")}</label>
+        <label id="pass2-wrap" hidden>비밀번호 한 번 더${pwField("pass2", "같은 비밀번호", "new-password")}</label>
+        <p class="small" id="enter-help" hidden>비밀번호는 다른 기기에서 이어서 할 때 써요. 잊어버리면 운영진도 찾아 줄 수 없어요.</p>
+        <button class="btn" id="enter-go">내 빙고판 열기</button>
       </form>
     </section>
     <section>
       <h2>빙고판 미리 보기</h2>
-      <div class="board"><div class="grid">${CELLS.map(([t, s]) => `<div class="cell is-empty"><span class="cell-title">${esc(t)}</span>${s ? `<span class="cell-sub">${esc(s)}</span>` : ""}</div>`).join("")}</div></div>
+      <div class="board"><div class="grid">${CELLS.map(([t, s], i) => `<div class="cell is-empty">${icon(i)}<span class="cell-title">${esc(t)}</span>${s ? `<span class="cell-sub">${esc(s)}</span>` : ""}</div>`).join("")}</div></div>
     </section>`;
-  let mode = "join";
-  const setMode = m => {
-    mode = m;
-    $("#t-join").setAttribute("aria-selected", m === "join"); $("#t-login").setAttribute("aria-selected", m === "login");
-    $("#enter-go").textContent = m === "join" ? "빙고판 만들기" : "내 빙고판 열기";
-    $("#enter-help").hidden = m !== "join";
+  bindPw(app);
+  const f = $("#enter-form");
+  const isNew = () => { const n = f.nick.value.trim(); return !!n && !state.players.some(p => p.nickname === n); };
+  const sync = () => {
+    const n = f.nick.value.trim(), fresh = isNew();
+    $("#pass2-wrap").hidden = !fresh; $("#enter-help").hidden = !fresh;
+    $("#enter-go").textContent = fresh ? "빙고판 만들기" : "내 빙고판 열기";
+    const help = $("#nick-help"); help.hidden = !n;
+    help.textContent = fresh ? "새 닉네임이에요. 비밀번호를 정하고 한 번 더 입력해 주세요." : "이미 있는 닉네임이에요. 비밀번호를 넣으면 이어서 할 수 있어요.";
   };
-  $("#t-join").onclick = () => setMode("join"); $("#t-login").onclick = () => setMode("login");
-  $("#enter-form").onsubmit = e => {
+  f.nick.addEventListener("input", sync);
+  f.onsubmit = e => {
     e.preventDefault();
-    const f = e.target, nick = f.nick.value.trim(), pass = f.pass.value;
+    const nick = f.nick.value.trim(), pass = f.pass.value;
+    if (!nick) return toast("닉네임을 입력해 주세요.", true);
+    if (pass.length < 4) return toast("비밀번호는 4자 이상으로 정해 주세요.", true);
     busy($("#enter-go"), async () => {
-      const r = await (mode === "join" ? api.join(nick, pass) : api.login(nick, pass));
+      await refresh(); sync();
+      const fresh = isNew();
+      if (fresh && f.pass2.value !== pass) { f.pass2.focus(); throw new Error(f.pass2.value ? "비밀번호 두 개가 서로 달라요." : "비밀번호를 한 번 더 입력해 주세요."); }
+      const r = await (fresh ? api.join(nick, pass) : api.login(nick, pass));
       setMe({ id: r.id, nickname: nick, token: r.token });
       await refresh(); route();
-      if (mode === "join") toast("빙고판이 만들어졌어요. 칸을 눌러 인증샷을 올려 보세요.");
+      if (fresh) toast("빙고판이 만들어졌어요. 칸을 눌러 인증샷을 올려 보세요.");
     });
   };
 }
@@ -404,10 +453,11 @@ async function viewAdmin() {
       <h1>운영진 확인 화면</h1>
       <form id="admin-form" class="enter">
         <label>${isSet ? "운영진 비밀번호" : "운영진 비밀번호 정하기"}
-          <input name="pass" type="password" minlength="${isSet ? 1 : 10}" maxlength="72" required autocomplete="${isSet ? "current-password" : "new-password"}"${isSet ? "" : ' placeholder="10자 이상"'}></label>
+          ${pwField("pass", isSet ? "" : "10자 이상", isSet ? "current-password" : "new-password", isSet ? 1 : 10)}</label>
         ${isSet ? "" : `<p class="small">아직 운영진 비밀번호가 없어요. 지금 입력한 값이 운영진 비밀번호가 되고, 나중에 화면에서 바꿀 수 없어요.</p>`}
         <button class="btn" id="admin-go">${isSet ? "들어가기" : "비밀번호 정하고 들어가기"}</button>
       </form>`;
+    bindPw(app);
     $("#admin-form").onsubmit = e => {
       e.preventDefault(); const pass = e.target.pass.value;
       busy($("#admin-go"), async () => {
