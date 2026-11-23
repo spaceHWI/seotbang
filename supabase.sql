@@ -129,7 +129,7 @@ begin
   if char_length(p_pass) < 4 or char_length(p_pass) > 72 then
     raise exception '비밀번호는 4자 이상으로 정해 주세요.';
   end if;
-  if bingo__too_many('join', bingo__ip(), 10, 60) then
+  if bingo__too_many('join', bingo__ip(), 40, 60) then
     raise exception '잠시 뒤에 다시 해 주세요.';
   end if;
   if exists (select 1 from bingo_players where nickname = v_nick) then

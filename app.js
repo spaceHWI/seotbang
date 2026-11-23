@@ -218,13 +218,18 @@ function toast(msg, bad) {
 async function busy(btn, fn) {
   if (btn) btn.disabled = true;
   try { return await fn(); }
-  catch (e) { toast(e.message || "문제가 생겼어요. 잠시 뒤 다시 해 주세요.", true); }
+  catch (e) {
+    const msg = e.message || "문제가 생겼어요. 잠시 뒤 다시 해 주세요.";
+    toast(msg, true);
+    if (msg.startsWith("로그인이 풀렸어요")) { setMe(null); $("#dlg").close(); route(); }
+    if (msg.startsWith("운영진 로그인이 풀렸어요")) { state.adminToken = ""; sessionStorage.removeItem("stb-bingo-admin"); $("#dlg").close(); route(); }
+  }
   finally { if (btn) btn.disabled = false; }
 }
 
 function renderNav() {
   $("#nav").innerHTML = state.me
-    ? `<a href="#/">내 빙고판</a><a href="#/all">참가자</a><a href="#/admin">운영진</a><button type="button" class="linkish" id="logout">${esc(state.me.nickname)} 나가기</button>`
+    ? `<a href="#/">내 빙고판</a><a href="#/all">참가자</a><a href="#/admin">운영진</a><button type="button" class="linkish" id="logout">나가기</button>`
     : `<a href="#/">시작하기</a><a href="#/all">참가자</a><a href="#/admin">운영진</a>`;
   const lo = $("#logout");
   if (lo) lo.onclick = () => { if (confirm("이 기기에서 로그아웃할까요? 기록은 그대로 남아요.")) { api.logout(state.me.token).catch(() => {}); setMe(null); route(); } };
@@ -365,13 +370,15 @@ function viewHome() {
       </section>
       ${boardHtml(state.me.id, true)}
       <p class="hint">칸을 누르면 인증샷을 올릴 수 있어요.</p>
+      ${rankingHtml()}
       <details class="fold"><summary>참여 방법 다시 보기</summary>${HOWTO}</details>`;
     bindBoard(app);
     return;
   }
   app.innerHTML = `
     <section class="hero">
-      <h1>12월 미션 빙고</h1>
+      <h1>12월 서트방 미션 빙고</h1>
+      <p class="period"><time datetime="2026-12-01">2026년 12월 1일</time> ~ <time datetime="2026-12-31">31일</time></p>
       <p class="lede">달리고, 찍고, 줄을 그어요.</p>
     </section>
     ${HOWTO}
@@ -388,7 +395,8 @@ function viewHome() {
     <section>
       <h2>빙고판 미리 보기</h2>
       <div class="board"><div class="grid">${CELLS.map(([t, s], i) => `<div class="cell is-empty">${icon(i)}<span class="cell-title">${esc(t)}</span>${s ? `<span class="cell-sub">${esc(s)}</span>` : ""}</div>`).join("")}</div></div>
-    </section>`;
+    </section>
+    ${rankingHtml()}`;
   bindPw(app);
   const f = $("#enter-form");
   const isNew = () => { const n = f.nick.value.trim(); return !!n && !state.players.some(p => p.nickname === n); };
@@ -418,17 +426,45 @@ function viewHome() {
 }
 
 /* ---------- 화면: 참가자 ---------- */
-function viewAll() {
+function ranked() {
   const rows = state.players.map(p => ({ p, ...score(p.id) }))
     .sort((a, b) => b.lines.length - a.lines.length || b.done.size - a.done.size || a.p.nickname.localeCompare(b.p.nickname, "ko"));
+  rows.forEach((r, i) => {
+    const prev = rows[i - 1];
+    r.rank = prev && prev.lines.length === r.lines.length && prev.done.size === r.done.size ? prev.rank : i + 1;
+  });
+  return rows;
+}
+
+function rosterHtml(rows) {
+  return `<ol class="roster">${rows.map(r => `
+    <li class="${state.me && state.me.id === r.p.id ? "me" : ""}"><a href="#/u/${esc(r.p.id)}">
+      <span class="rank">${r.rank}</span>
+      <span class="mini" aria-hidden="true">${CELLS.map((_, i) => `<i class="${r.done.has(i) ? "on" : ""}"></i>`).join("")}</span>
+      <span class="who">${esc(r.p.nickname)}</span>
+      <span class="num"><b>${r.lines.length}</b>빙고<small>${r.done.size}칸</small></span>
+    </a></li>`).join("")}</ol>`;
+}
+
+// 빙고판 아래에 붙는 현재 랭킹 (위에서 10명 + 내 순위)
+function rankingHtml() {
+  const rows = ranked(), TOP = 10;
+  if (!rows.length) return "";
+  const top = rows.slice(0, TOP);
+  const mine = state.me ? rows.find(r => r.p.id === state.me.id) : null;
+  if (mine && !top.includes(mine)) top.push(mine);
+  return `<section class="ranking">
+    <h2>현재 랭킹</h2>
+    ${rosterHtml(top)}
+    ${rows.length > TOP ? `<p class="more"><a href="#/all">참가자 ${rows.length}명 모두 보기</a></p>` : ""}
+  </section>`;
+}
+
+function viewAll() {
+  const rows = ranked();
   $("#app").innerHTML = `
     <h1>참가자 ${rows.length}명</h1>
-    ${rows.length ? `<ol class="roster">${rows.map(r => `
-      <li><a href="#/u/${esc(r.p.id)}">
-        <span class="mini" aria-hidden="true">${CELLS.map((_, i) => `<i class="${r.done.has(i) ? "on" : ""}"></i>`).join("")}</span>
-        <span class="who">${esc(r.p.nickname)}</span>
-        <span class="num"><b>${r.lines.length}</b>빙고<small>${r.done.size}칸</small></span>
-      </a></li>`).join("")}</ol>`
+    ${rows.length ? rosterHtml(rows)
     : `<p class="empty">아직 참가자가 없어요. <a href="#/">첫 번째로 빙고판을 만들어 보세요.</a></p>`}`;
 }
 
@@ -439,7 +475,8 @@ function viewUser(pid) {
   $("#app").innerHTML = `
     <section class="mine-head"><h1>${esc(p.nickname)}의 빙고판</h1>${tallyHtml(pid)}</section>
     ${boardHtml(pid, mine)}
-    <p class="hint">칸을 누르면 인증샷을 볼 수 있어요.</p>`;
+    <p class="hint">칸을 누르면 인증샷을 볼 수 있어요.</p>
+    ${rankingHtml()}`;
   bindBoard($("#app"));
 }
 
@@ -495,12 +532,23 @@ async function viewAdmin() {
   app.querySelectorAll("[data-f]").forEach(b => (b.onclick = () => { state.adminFilter = b.dataset.f; viewAdmin(); }));
   app.querySelectorAll("[data-act]").forEach(b => (b.onclick = () => {
     const id = b.closest("li").dataset.id, act = b.dataset.act;
-    let reason = null;
-    if (act === "rejected") { reason = prompt("반려 사유 (참가자에게 보여요. 비워 둬도 돼요)", ""); if (reason === null) return; }
-    busy(b, async () => {
-      await api.review(state.adminToken, id, act, reason); await refresh(); viewAdmin();
+    const run = (btn, reason) => busy(btn, async () => {
+      await api.review(state.adminToken, id, act, reason); await refresh(); $("#dlg").close(); viewAdmin();
       toast({ approved: "승인했어요.", rejected: "반려했어요.", pending: "확인 전으로 되돌렸어요." }[act]);
     });
+    if (act !== "rejected") return run(b, null);
+    const dlg = $("#dlg"), s = state.subs.find(x => x.id === id);
+    dlg.innerHTML = `
+      <form class="sheet" id="reject-form">
+        <button type="button" class="close" id="reject-close">닫기</button>
+        <h2>반려하기</h2>
+        <p>${esc(name(s.player_id))} · ${esc(CELLS[s.cell][0])}</p>
+        <label class="field">반려 사유<input name="reason" maxlength="200" placeholder="참가자에게 보여요. 비워 둬도 돼요" autocomplete="off"></label>
+        <button class="btn" id="reject-go">반려하기</button>
+      </form>`;
+    $("#reject-close").onclick = () => dlg.close();
+    $("#reject-form").onsubmit = ev => { ev.preventDefault(); run($("#reject-go"), ev.target.reason.value.trim()); };
+    dlg.showModal();
   }));
 }
 
