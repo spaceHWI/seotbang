@@ -191,7 +191,7 @@ dialog::backdrop { background: rgba(6,30,21,.72); }
 .q-act .btn { padding: .55rem 1.1rem; }
 
 /* 바닥 */
-.foot { max-width: 44rem; margin: 0 auto; padding: 1rem 1rem 2rem; display: flex; justify-content: space-between; gap: 1rem; font-size: .8125rem; opacity: .8; border-top: 1px solid rgba(255,243,220,.25); }
+.foot { max-width: 44rem; margin: 0 auto; padding: 1rem 1rem 1rem; display: flex; justify-content: space-between; gap: 1rem; font-size: .8125rem; opacity: .8; border-top: 1px solid rgba(255,243,220,.25); }
 
 #toast {
   position: fixed; left: 50%; bottom: 1.25rem; transform: translate(-50%, 1rem); z-index: 10;
@@ -208,7 +208,39 @@ dialog::backdrop { background: rgba(6,30,21,.72); }
   .cell-sub { display: none; }
   .queue li { grid-template-columns: 5.5rem 1fr; }
 }
+/* 눈 */
+#snow { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+.snowbank { position: fixed; left: 0; right: 0; bottom: 0; height: 9px; z-index: 4; pointer-events: none; background: #fffaf0; border-radius: 60% 40% 0 0 / 100% 100% 0 0; }
+body { padding-bottom: 6.5rem; }
+
+/* 달리는 산타 */
+.santa-lane { position: fixed; left: 0; bottom: 4px; z-index: 5; pointer-events: none; animation: santa-cross 16s linear infinite; }
+.santa { display: block; overflow: visible; }
+.s-suit { fill: var(--track); } .s-suit-b { fill: var(--track-deep); }
+.s-limb, .s-limb-b { fill: none; stroke: var(--track); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
+.s-limb-b { stroke: var(--track-deep); }
+.s-fur { fill: #fffaf0; } .s-skin { fill: #f6c7a1; } .s-nose { fill: #e8866a; } .s-eye { fill: var(--ink); }
+.s-belt, .s-mitt, .s-shoe { fill: var(--forest-deep); } .s-sole { fill: var(--peach); } .s-buckle { fill: var(--sun); }
+.s-bib { fill: #fffaf0; } .s-bibno { fill: var(--ink); font: 700 10px var(--body); }
+.s-sack { fill: #d9a25b; } .s-sack-tie { fill: #b9803c; }
+.santa .leg, .santa .shin, .santa .arm { transform-box: view-box; }
+.santa .leg { transform-origin: 66.5px 84px; animation: thigh .56s linear infinite; }
+.santa .shin { transform-origin: 66.5px 103px; animation: shin .56s linear infinite; }
+.santa .arm { transform-origin: 66px 55px; animation: arm .56s ease-in-out infinite; }
+.santa .leg-b, .santa .leg-b .shin, .santa .arm-a { animation-delay: -.28s; }
+.santa-bob { animation: bob .28s ease-in-out infinite alternate; }
+.santa-head { transform-box: view-box; transform-origin: 78px 46px; animation: nod .28s ease-in-out infinite alternate; }
+@keyframes santa-cross { from { transform: translateX(-140px); } to { transform: translateX(calc(100vw + 20px)); } }
+@keyframes thigh { 0%, 100% { transform: rotate(-42deg); } 25% { transform: rotate(-4deg); } 50% { transform: rotate(34deg); } 75% { transform: rotate(-14deg); } }
+@keyframes shin { 0%, 100% { transform: rotate(8deg); } 25% { transform: rotate(6deg); } 50% { transform: rotate(38deg); } 75% { transform: rotate(98deg); } }
+@keyframes arm { 0%, 100% { transform: rotate(48deg); } 50% { transform: rotate(-58deg); } }
+@keyframes bob { from { transform: translateY(0); } to { transform: translateY(-4px); } }
+@keyframes nod { from { transform: rotate(-2deg); } to { transform: rotate(3deg); } }
+
 @media (prefers-reduced-motion: reduce) {
+  .santa-lane { animation: none; left: auto; right: 12px; }
+  .santa .leg, .santa .shin, .santa .arm, .santa-bob, .santa-head { animation: none; }
+  .santa .leg-a { transform: rotate(-30deg); } .santa .leg-b { transform: rotate(28deg); }
   .lines .fresh line { animation: none; }
   #toast { transition: none; }
 }

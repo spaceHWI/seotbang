@@ -469,6 +469,43 @@ function route() {
   window.scrollTo(0, 0);
 }
 
+
+/* ---------- 눈 ---------- */
+(() => {
+  const cv = document.getElementById("snow");
+  if (!cv || !cv.getContext) return;
+  const ctx = cv.getContext("2d");
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let w = 0, h = 0, flakes = [], raf = 0, last = 0;
+  const make = top => {
+    const z = Math.random(); // 0 멀리, 1 가까이
+    return { x: Math.random() * w, y: top ? -8 : Math.random() * h, r: 1 + z * 2.6, v: 18 + z * 42, sway: 8 + Math.random() * 18, ph: Math.random() * 6.28, a: .35 + z * .55 };
+  };
+  const size = () => {
+    const d = Math.min(window.devicePixelRatio || 1, 2);
+    w = window.innerWidth; h = window.innerHeight;
+    cv.width = w * d; cv.height = h * d; ctx.setTransform(d, 0, 0, d, 0, 0);
+    const n = Math.round(Math.min(110, w * h / 9000));
+    flakes = Array.from({ length: n }, () => make(false));
+    draw(0);
+  };
+  const draw = dt => {
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#fffaf0";
+    for (const f of flakes) {
+      f.y += f.v * dt; f.ph += dt * .9;
+      if (f.y > h + 8) Object.assign(f, make(true));
+      ctx.globalAlpha = f.a;
+      ctx.beginPath(); ctx.arc(f.x + Math.sin(f.ph) * f.sway, f.y, f.r, 0, 6.2832); ctx.fill();
+    }
+  };
+  const tick = t => { const dt = Math.min(.05, (t - last) / 1000 || 0); last = t; draw(dt); raf = requestAnimationFrame(tick); };
+  const start = () => { if (!still && !raf && !document.hidden) { last = performance.now(); raf = requestAnimationFrame(tick); } };
+  const stop = () => { cancelAnimationFrame(raf); raf = 0; };
+  window.addEventListener("resize", size);
+  document.addEventListener("visibilitychange", () => (document.hidden ? stop() : start()));
+  size(); start();
+})();
 window.addEventListener("hashchange", async () => { await refresh().catch(() => {}); route(); });
 if (window.top !== window.self) { document.documentElement.hidden = true; throw new Error("framed"); }
 (async () => {
