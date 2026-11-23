@@ -83,7 +83,7 @@ function liveApi() {
     logout: token => rpc("bingo_logout", { p_token: token }),
     async submit(me, cell, blob) {
       const path = `${me.id}/${cell}-${Date.now()}.jpg`;
-      const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: "image/jpeg" });
+      const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: "image/jpeg", headers: { "x-bingo-token": me.token } });
       if (up.error) throw new Error("사진을 올리지 못했어요. " + up.error.message);
       await rpc("bingo_submit", { p_token: me.token, p_cell: cell, p_path: path });
     },
@@ -470,6 +470,7 @@ function route() {
 }
 
 window.addEventListener("hashchange", async () => { await refresh().catch(() => {}); route(); });
+if (window.top !== window.self) { document.documentElement.hidden = true; throw new Error("framed"); }
 (async () => {
   if (!LIVE) document.body.insertAdjacentHTML("afterbegin", `<p class="demo-bar">미리보기 모드예요. 올린 내용은 이 기기에만 저장돼요.</p>`);
   try { await refresh(); route(); }

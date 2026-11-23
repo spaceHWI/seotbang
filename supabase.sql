@@ -259,7 +259,7 @@ grant execute on function
   public.bingo_review(text, uuid, text, text)
 to anon, authenticated;
 
--- 5) 인증샷 저장소 (공개 읽기, 5MB 이하 JPEG만 올리기, 덮어쓰기·삭제 불가) ---
+-- 5) 인증샷 저장소 (공개 읽기, 5MB 이하 JPEG만, 덮어쓰기·삭제 불가) --------
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('bingo-proofs', 'bingo-proofs', true, 5242880, array['image/jpeg'])
 on conflict (id) do update
@@ -267,7 +267,24 @@ on conflict (id) do update
       file_size_limit = excluded.file_size_limit,
       allowed_mime_types = excluded.allowed_mime_types;
 
+-- 로그인한 참가자만, 자기 폴더에만, 정해진 파일 이름으로, 한 사람당 120장까지 올릴 수 있음.
+-- 로그인 토큰은 올리기 요청의 x-bingo-token 헤더로 받는다.
+create or replace function public.bingo_upload_ok(p_name text)
+returns boolean language plpgsql stable security definer set search_path = public, extensions as $$
+declare
+  v_token text := nullif(current_setting('request.headers', true), '')::json ->> 'x-bingo-token';
+  v_player uuid;
+begin
+  if v_token is null then return false; end if;
+  v_player := bingo__player(v_token);
+  if v_player is null then return false; end if;
+  if p_name !~ ('^' || v_player::text || '/[0-9]{1,2}-[0-9]{10,16}\.jpg$') then return false; end if;
+  return (select count(*) from storage.objects
+          where bucket_id = 'bingo-proofs' and name like v_player::text || '/%') < 120;
+end $$;
+grant execute on function public.bingo_upload_ok(text) to anon, authenticated;
+
 drop policy if exists "bingo proofs upload" on storage.objects;
 create policy "bingo proofs upload" on storage.objects
   for insert to anon, authenticated
-  with check (bucket_id = 'bingo-proofs');
+  with check (bucket_id = 'bingo-proofs' and public.bingo_upload_ok(name));
