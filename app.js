@@ -47,6 +47,7 @@ const LINES = (() => {
 const STATUS_WORD = { pending: "확인 중", approved: "승인", rejected: "다시 올리기" };
 
 const $ = (s, el = document) => el.querySelector(s);
+const cssUrl = u => String(u).replace(/['"()\\\s]/g, c => encodeURIComponent(c) === c ? "%" + c.charCodeAt(0).toString(16) : encodeURIComponent(c));
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
 /* ---------- 저장소: Supabase 또는 미리보기(localStorage) ---------- */
@@ -74,19 +75,29 @@ function liveApi() {
       return data.map(s => ({ ...s, photo_url: sb.storage.from(BUCKET).getPublicUrl(s.photo_path).data.publicUrl }));
     },
     join: (nick, pass) => rpc("bingo_join", { p_nickname: nick, p_pass: pass }),
-    login: (nick, pass) => rpc("bingo_login", { p_nickname: nick, p_pass: pass }),
+    async login(nick, pass) {
+      const r = await rpc("bingo_login", { p_nickname: nick, p_pass: pass });
+      if (!r) throw new Error("닉네임이나 비밀번호가 맞지 않아요.");
+      return r;
+    },
+    logout: token => rpc("bingo_logout", { p_token: token }),
     async submit(me, cell, blob) {
       const path = `${me.id}/${cell}-${Date.now()}.jpg`;
       const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: "image/jpeg" });
       if (up.error) throw new Error("사진을 올리지 못했어요. " + up.error.message);
-      await rpc("bingo_submit", { p_player: me.id, p_pass: me.pass, p_cell: cell, p_path: path });
+      await rpc("bingo_submit", { p_token: me.token, p_cell: cell, p_path: path });
     },
-    cancel: (me, cell) => rpc("bingo_cancel", { p_player: me.id, p_pass: me.pass, p_cell: cell }),
+    cancel: (me, cell) => rpc("bingo_cancel", { p_token: me.token, p_cell: cell }),
     adminIsSet: () => rpc("bingo_admin_is_set", {}),
     adminInit: pass => rpc("bingo_admin_init", { p_pass: pass }),
-    adminCheck: pass => rpc("bingo_admin_check", { p_pass: pass }),
-    review: (pass, id, status, reason) =>
-      rpc("bingo_review", { p_admin_pass: pass, p_submission: id, p_status: status, p_reason: reason || null }),
+    async adminLogin(pass) {
+      const t = await rpc("bingo_admin_login", { p_pass: pass });
+      if (!t) throw new Error("운영진 비밀번호가 맞지 않아요.");
+      return t;
+    },
+    adminCheck: token => rpc("bingo_admin_check", { p_token: token }),
+    review: (token, id, status, reason) =>
+      rpc("bingo_review", { p_token: token, p_submission: id, p_status: status, p_reason: reason || null }),
   };
 }
 
@@ -97,7 +108,7 @@ function demoApi() {
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* 용량 초과 시 화면에만 유지 */ } };
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
   const toDataUrl = blob => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(blob); });
-  const auth = me => { if (!db.players.some(p => p.id === me.id && p.pass === me.pass)) throw new Error("로그인이 풀렸어요. 다시 들어와 주세요."); };
+  const auth = me => { if (!db.players.some(p => p.id === me.id && p.pass === me.token)) throw new Error("로그인이 풀렸어요. 다시 들어와 주세요."); };
   return {
     async listPlayers() { return db.players.map(({ id, nickname, created_at }) => ({ id, nickname, created_at })); },
     async listSubs() { return db.subs.map(s => ({ ...s })); },
@@ -107,13 +118,14 @@ function demoApi() {
       if (pass.length < 4) throw new Error("비밀번호는 4자 이상으로 정해 주세요.");
       if (db.players.some(p => p.nickname === nick)) throw new Error('이미 있는 닉네임이에요. 본인이면 "이어서 하기"로 들어오세요.');
       const p = { id: uid(), nickname: nick, pass, created_at: new Date().toISOString() };
-      db.players.push(p); save(); return p.id;
+      db.players.push(p); save(); return { id: p.id, token: pass };
     },
     async login(nick, pass) {
       const p = db.players.find(p => p.nickname === nick.trim() && p.pass === pass);
       if (!p) throw new Error("닉네임이나 비밀번호가 맞지 않아요.");
-      return p.id;
+      return { id: p.id, token: pass };
     },
+    async logout() {},
     async submit(me, cell, blob) {
       auth(me);
       const old = db.subs.find(s => s.player_id === me.id && s.cell === cell);
@@ -126,13 +138,14 @@ function demoApi() {
     async cancel(me, cell) { auth(me); db.subs = db.subs.filter(s => !(s.player_id === me.id && s.cell === cell && s.status !== "approved")); save(); },
     async adminIsSet() { return !!db.admin; },
     async adminInit(pass) {
-      if (pass.length < 6) throw new Error("운영진 비밀번호는 6자 이상으로 정해 주세요.");
+      if (pass.length < 10) throw new Error("운영진 비밀번호는 10자 이상으로 정해 주세요.");
       if (db.admin) throw new Error("운영진 비밀번호가 이미 정해져 있어요.");
-      db.admin = pass; save();
+      db.admin = pass; save(); return pass;
     },
-    async adminCheck(pass) { return !!db.admin && db.admin === pass; },
+    async adminLogin(pass) { if (db.admin !== pass) throw new Error("운영진 비밀번호가 맞지 않아요."); return pass; },
+    async adminCheck(token) { return !!db.admin && db.admin === token; },
     async review(pass, id, status, reason) {
-      if (db.admin !== pass) throw new Error("운영진 비밀번호가 맞지 않아요.");
+      if (db.admin !== pass) throw new Error("운영진 로그인이 풀렸어요. 다시 들어와 주세요.");
       const s = db.subs.find(s => s.id === id); if (!s) return;
       s.status = status; s.reject_reason = status === "rejected" ? (reason || null) : null; save();
     },
@@ -145,8 +158,8 @@ const api = LIVE ? liveApi() : demoApi();
 const ME_KEY = "stb-bingo-me";
 const state = {
   players: [], subs: [],
-  me: (() => { try { return JSON.parse(localStorage.getItem(ME_KEY)); } catch { return null; } })(),
-  adminPass: sessionStorage.getItem("stb-bingo-admin") || "",
+  me: (() => { try { const m = JSON.parse(localStorage.getItem(ME_KEY)); return m && m.token ? m : null; } catch { return null; } })(),
+  adminToken: sessionStorage.getItem("stb-bingo-admin") || "",
   adminFilter: "pending",
   drawn: new Set(), // 이미 그어진 줄(다시 그리는 애니메이션 방지)
 };
@@ -181,10 +194,10 @@ async function busy(btn, fn) {
 
 function renderNav() {
   $("#nav").innerHTML = state.me
-    ? `<a href="#/">내 빙고판</a><a href="#/all">참가자</a><button type="button" class="linkish" id="logout">${esc(state.me.nickname)} 나가기</button>`
-    : `<a href="#/">시작하기</a><a href="#/all">참가자</a>`;
+    ? `<a href="#/">내 빙고판</a><a href="#/all">참가자</a><a href="#/admin">운영진</a><button type="button" class="linkish" id="logout">${esc(state.me.nickname)} 나가기</button>`
+    : `<a href="#/">시작하기</a><a href="#/all">참가자</a><a href="#/admin">운영진</a>`;
   const lo = $("#logout");
-  if (lo) lo.onclick = () => { if (confirm("이 기기에서 로그아웃할까요? 기록은 그대로 남아요.")) { setMe(null); route(); } };
+  if (lo) lo.onclick = () => { if (confirm("이 기기에서 로그아웃할까요? 기록은 그대로 남아요.")) { api.logout(state.me.token).catch(() => {}); setMe(null); route(); } };
 }
 
 /* ---------- 빙고판 ---------- */
@@ -192,7 +205,7 @@ function boardHtml(pid, mine) {
   const m = subsOf(pid), { lines } = score(pid);
   const cells = CELLS.map(([title, sub], i) => {
     const s = m[i], st = s ? s.status : "empty";
-    const bg = st === "approved" ? ` style="background-image:url('${esc(s.photo_url)}')"` : "";
+    const bg = st === "approved" ? ` style="background-image:url('${esc(cssUrl(s.photo_url))}')"` : "";
     const tag = st === "pending" || st === "rejected" ? `<span class="tag">${STATUS_WORD[st]}</span>` : "";
     const label = `${title}${sub ? ", " + sub : ""}${s ? ", " + STATUS_WORD[st] : ""}`;
     return `<button type="button" class="cell is-${st}" data-cell="${i}" aria-label="${esc(label)}"${bg}>
@@ -350,8 +363,8 @@ function viewHome() {
     e.preventDefault();
     const f = e.target, nick = f.nick.value.trim(), pass = f.pass.value;
     busy($("#enter-go"), async () => {
-      const id = await (mode === "join" ? api.join(nick, pass) : api.login(nick, pass));
-      setMe({ id, nickname: nick, pass });
+      const r = await (mode === "join" ? api.join(nick, pass) : api.login(nick, pass));
+      setMe({ id: r.id, nickname: nick, token: r.token });
       await refresh(); route();
       if (mode === "join") toast("빙고판이 만들어졌어요. 칸을 눌러 인증샷을 올려 보세요.");
     });
@@ -387,23 +400,22 @@ function viewUser(pid) {
 /* ---------- 화면: 운영진 ---------- */
 async function viewAdmin() {
   const app = $("#app");
-  if (!state.adminPass || !(await api.adminCheck(state.adminPass).catch(() => false))) {
-    state.adminPass = ""; sessionStorage.removeItem("stb-bingo-admin");
+  if (!state.adminToken || !(await api.adminCheck(state.adminToken).catch(() => false))) {
+    state.adminToken = ""; sessionStorage.removeItem("stb-bingo-admin");
     const isSet = await api.adminIsSet().catch(() => true);
     app.innerHTML = `
       <h1>운영진 확인 화면</h1>
       <form id="admin-form" class="enter">
         <label>${isSet ? "운영진 비밀번호" : "운영진 비밀번호 정하기"}
-          <input name="pass" type="password" minlength="6" required autocomplete="off" placeholder="6자 이상"></label>
+          <input name="pass" type="password" minlength="${isSet ? 1 : 10}" maxlength="72" required autocomplete="${isSet ? "current-password" : "new-password"}"${isSet ? "" : ' placeholder="10자 이상"'}></label>
         ${isSet ? "" : `<p class="small">아직 운영진 비밀번호가 없어요. 지금 입력한 값이 운영진 비밀번호가 되고, 나중에 화면에서 바꿀 수 없어요.</p>`}
         <button class="btn" id="admin-go">${isSet ? "들어가기" : "비밀번호 정하고 들어가기"}</button>
       </form>`;
     $("#admin-form").onsubmit = e => {
       e.preventDefault(); const pass = e.target.pass.value;
       busy($("#admin-go"), async () => {
-        if (!isSet) await api.adminInit(pass);
-        if (!(await api.adminCheck(pass))) throw new Error("운영진 비밀번호가 맞지 않아요.");
-        state.adminPass = pass; sessionStorage.setItem("stb-bingo-admin", pass); route();
+        const token = isSet ? await api.adminLogin(pass) : await api.adminInit(pass);
+        state.adminToken = token; sessionStorage.setItem("stb-bingo-admin", token); route();
       });
     };
     return;
@@ -414,7 +426,7 @@ async function viewAdmin() {
     .sort((a, b) => a.created_at < b.created_at ? -1 : 1);
   const emptyMsg = { pending: "확인할 인증샷이 없어요.", approved: "승인한 인증샷이 없어요.", rejected: "반려한 인증샷이 없어요." }[state.adminFilter];
   app.innerHTML = `
-    <h1>운영진 확인 화면</h1>
+    <section class="mine-head"><h1>운영진 확인 화면</h1><button type="button" class="linkish" id="admin-out">운영진 나가기</button></section>
     <div class="tabs" role="tablist">
       ${["pending", "approved", "rejected"].map(st => `<button type="button" role="tab" data-f="${st}" aria-selected="${state.adminFilter === st}">${{ pending: "확인할 것", approved: "승인함", rejected: "반려함" }[st]} ${count(st)}</button>`).join("")}
     </div>
@@ -432,13 +444,14 @@ async function viewAdmin() {
           </div>
         </div>
       </li>`).join("")}</ul>` : `<p class="empty">${emptyMsg}</p>`}`;
+  $("#admin-out").onclick = () => { api.logout(state.adminToken).catch(() => {}); state.adminToken = ""; sessionStorage.removeItem("stb-bingo-admin"); location.hash = "#/"; };
   app.querySelectorAll("[data-f]").forEach(b => (b.onclick = () => { state.adminFilter = b.dataset.f; viewAdmin(); }));
   app.querySelectorAll("[data-act]").forEach(b => (b.onclick = () => {
     const id = b.closest("li").dataset.id, act = b.dataset.act;
     let reason = null;
     if (act === "rejected") { reason = prompt("반려 사유 (참가자에게 보여요. 비워 둬도 돼요)", ""); if (reason === null) return; }
     busy(b, async () => {
-      await api.review(state.adminPass, id, act, reason); await refresh(); viewAdmin();
+      await api.review(state.adminToken, id, act, reason); await refresh(); viewAdmin();
       toast({ approved: "승인했어요.", rejected: "반려했어요.", pending: "확인 전으로 되돌렸어요." }[act]);
     });
   }));
