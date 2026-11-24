@@ -280,7 +280,7 @@ async function busy(btn, fn) {
 
 function renderNav() {
   $("#nav").innerHTML = state.me
-    ? `<a href="#/">내 빙고판</a><a href="#/all">참가자</a><a href="#/dugeun">두근</a><a href="#/admin">운영진</a><button type="button" class="linkish" id="logout">나가기</button>`
+    ? `<a href="#/">빙고판</a><a href="#/all">참가자</a><a href="#/dugeun">두근</a><a href="#/admin">운영진</a><button type="button" class="linkish" id="logout">나가기</button>`
     : `<a href="#/">시작하기</a><a href="#/all">참가자</a><a href="#/dugeun">두근</a><a href="#/admin">운영진</a>`;
   const lo = $("#logout");
   if (lo) lo.onclick = () => { if (confirm("이 기기에서 로그아웃할까요? 기록은 그대로 남아요.")) { api.logout(state.me.token).catch(() => {}); setMe(null); route(); } };
