@@ -350,3 +350,22 @@ textarea { resize: vertical; }
 .price-in input:disabled { background: #f1e6cf; }
 .check { display: flex; align-items: center; gap: .5rem; font-size: .9375rem; margin-top: -.25rem; }
 .check input { width: 1.125rem; height: 1.125rem; accent-color: var(--forest); }
+
+/* 말풍선: 줄 선 사람이 적은 제시 가격 */
+.lane { min-height: 8.25rem; }
+.tok { width: 4.5rem; }
+.bubble { position: relative; display: block; min-height: 1.5rem; margin-bottom: .3rem; padding: .15rem .4rem; border-radius: 6px; background: var(--cream); color: var(--ink); font-size: .75rem; font-weight: 700; line-height: 1.6; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bubble::after { content: ""; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: var(--cream); }
+.bubble.top { background: var(--sun); }
+.bubble.top::after { border-top-color: var(--sun); }
+.bubble.none { visibility: hidden; }
+.offer-top { font-weight: 700; color: var(--track-deep); }
+.tok em { order: 0; }
+.tok.pick-b { cursor: pointer; border-radius: 6px; padding: .25rem 0; }
+.tok.pick-b:hover { background: rgba(255,243,220,.14); }
+.tok.picked { background: rgba(255,243,220,.22); box-shadow: inset 0 0 0 2px var(--cream); }
+.tok.buyer { color: var(--sun); }
+.tok.buyer b { color: var(--cream); }
+.bubble.sold { background: var(--forest); color: var(--cream); }
+.bubble.sold::after { border-top-color: var(--forest); }
+.btn:disabled { cursor: default; }

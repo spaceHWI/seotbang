@@ -347,8 +347,26 @@ declare v_player uuid := bingo__player(p_token);
 begin
   if v_player is null then raise exception '로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
   if p_status not in ('open','reserved','done') then raise exception '없는 상태예요.'; end if;
-  update bingo_items set status = p_status where id = p_item and player_id = v_player;
+  update bingo_items set status = p_status,
+         buyer_id = case when p_status = 'done' then buyer_id else null end
+  where id = p_item and player_id = v_player;
   if not found then raise exception '내가 올린 물건만 바꿀 수 있어요.'; end if;
+end $$;
+
+-- 올린 사람이 줄 선 사람 가운데 한 명을 골라 판매 완료로 바꿈
+alter table public.bingo_items add column if not exists buyer_id uuid references public.bingo_players(id) on delete set null;
+create or replace function public.bingo_item_sell(p_token text, p_item uuid, p_buyer uuid)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+declare v_player uuid := bingo__player(p_token);
+begin
+  if v_player is null then raise exception '로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
+  if not exists (select 1 from bingo_items where id = p_item and player_id = v_player) then
+    raise exception '내가 올린 물건만 바꿀 수 있어요.';
+  end if;
+  if not exists (select 1 from bingo_item_queue where item_id = p_item and player_id = p_buyer) then
+    raise exception '줄 선 사람 가운데에서 골라 주세요.';
+  end if;
+  update bingo_items set status = 'done', buyer_id = p_buyer where id = p_item;
 end $$;
 
 -- 올린 사람 또는 운영진이 지울 수 있음
@@ -365,7 +383,10 @@ begin
   if not found then raise exception '내가 올린 물건만 지울 수 있어요.'; end if;
 end $$;
 
-create or replace function public.bingo_item_queue_join(p_token text, p_item uuid)
+-- 줄 서기. p_offer 는 말풍선에 적는 제시 가격(없어도 됨). 이미 줄에 있으면 가격만 바뀌고 순서는 그대로.
+alter table public.bingo_item_queue add column if not exists offer integer check (offer is null or offer between 0 and 100000000);
+drop function if exists public.bingo_item_queue_join(text, uuid);
+create or replace function public.bingo_item_queue_join(p_token text, p_item uuid, p_offer int default null)
 returns void language plpgsql security definer set search_path = public, extensions as $$
 declare v_player uuid := bingo__player(p_token); v_owner uuid; v_status text;
 begin
@@ -374,8 +395,11 @@ begin
   if v_owner is null then raise exception '없는 물건이에요.'; end if;
   if v_owner = v_player then raise exception '내가 올린 물건에는 줄을 설 수 없어요.'; end if;
   if v_status = 'done' then raise exception '거래가 끝난 물건이에요.'; end if;
-  if (select count(*) from bingo_item_queue where item_id = p_item) >= 30 then raise exception '줄이 꽉 찼어요.'; end if;
-  insert into bingo_item_queue (item_id, player_id) values (p_item, v_player) on conflict do nothing;
+  if p_offer is not null and (p_offer < 0 or p_offer > 100000000) then raise exception '가격을 다시 확인해 주세요.'; end if;
+  if not exists (select 1 from bingo_item_queue where item_id = p_item and player_id = v_player)
+     and (select count(*) from bingo_item_queue where item_id = p_item) >= 30 then raise exception '줄이 꽉 찼어요.'; end if;
+  insert into bingo_item_queue (item_id, player_id, offer) values (p_item, v_player, p_offer)
+  on conflict (item_id, player_id) do update set offer = excluded.offer;
 end $$;
 
 create or replace function public.bingo_item_queue_leave(p_token text, p_item uuid)
@@ -389,7 +413,8 @@ end $$;
 grant execute on function
   public.bingo_item_post(text, text, text, text, int, text, text),
   public.bingo_item_status(text, uuid, text),
+  public.bingo_item_sell(text, uuid, uuid),
   public.bingo_item_delete(text, uuid),
-  public.bingo_item_queue_join(text, uuid),
+  public.bingo_item_queue_join(text, uuid, int),
   public.bingo_item_queue_leave(text, uuid)
 to anon, authenticated;

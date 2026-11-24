@@ -120,12 +120,12 @@ function liveApi() {
     cancel: (me, cell) => rpc("bingo_cancel", { p_token: me.token, p_cell: cell }),
     async listItems() {
       const { data, error } = await sb.from("bingo_items")
-        .select("id,player_id,title,category,description,price,pickup,photo_path,status,created_at").order("created_at", { ascending: false });
+        .select("id,player_id,title,category,description,price,pickup,photo_path,status,buyer_id,created_at").order("created_at", { ascending: false });
       if (error) throw new Error(error.message);
       return data.map(i => ({ ...i, photo_url: sb.storage.from(BUCKET).getPublicUrl(i.photo_path).data.publicUrl }));
     },
     async listQueue() {
-      const { data, error } = await sb.from("bingo_item_queue").select("item_id,player_id,created_at").order("created_at");
+      const { data, error } = await sb.from("bingo_item_queue").select("item_id,player_id,offer,created_at").order("created_at");
       if (error) throw new Error(error.message);
       return data;
     },
@@ -136,8 +136,9 @@ function liveApi() {
       return rpc("bingo_item_post", { p_token: me.token, p_title: d.title, p_category: d.category, p_description: d.description, p_price: d.price, p_pickup: d.pickup, p_path: path });
     },
     itemStatus: (me, id, status) => rpc("bingo_item_status", { p_token: me.token, p_item: id, p_status: status }),
+    itemSell: (me, id, buyer) => rpc("bingo_item_sell", { p_token: me.token, p_item: id, p_buyer: buyer }),
     itemDelete: (token, id) => rpc("bingo_item_delete", { p_token: token, p_item: id }),
-    queueJoin: (me, id) => rpc("bingo_item_queue_join", { p_token: me.token, p_item: id }),
+    queueJoin: (me, id, offer) => rpc("bingo_item_queue_join", { p_token: me.token, p_item: id, p_offer: offer }),
     queueLeave: (me, id) => rpc("bingo_item_queue_leave", { p_token: me.token, p_item: id }),
     adminIsSet: () => rpc("bingo_admin_is_set", {}),
     adminInit: pass => rpc("bingo_admin_init", { p_pass: pass }),
@@ -193,19 +194,26 @@ function demoApi() {
       auth(me);
       const id = uid(); db.items.push({ id, player_id: me.id, ...d, photo_url: await toDataUrl(blob), status: "open", created_at: new Date().toISOString() }); save(); return id;
     },
-    async itemStatus(me, id, status) { auth(me); const i = db.items.find(i => i.id === id && i.player_id === me.id); if (!i) throw new Error("내가 올린 물건만 바꿀 수 있어요."); i.status = status; save(); },
+    async itemStatus(me, id, status) { auth(me); const i = db.items.find(i => i.id === id && i.player_id === me.id); if (!i) throw new Error("내가 올린 물건만 바꿀 수 있어요."); i.status = status; if (status !== "done") i.buyer_id = null; save(); },
+    async itemSell(me, id, buyer) {
+      auth(me); const i = db.items.find(i => i.id === id && i.player_id === me.id);
+      if (!i) throw new Error("내가 올린 물건만 바꿀 수 있어요.");
+      if (!db.queue.some(q => q.item_id === id && q.player_id === buyer)) throw new Error("줄 선 사람 가운데에서 골라 주세요.");
+      i.status = "done"; i.buyer_id = buyer; save();
+    },
     async itemDelete(token, id) {
       const i = db.items.find(i => i.id === id); if (!i) return;
       const owner = db.players.find(p => p.id === i.player_id);
       if (!(db.admin && db.admin === token) && !(owner && owner.pass === token)) throw new Error("내가 올린 물건만 지울 수 있어요.");
       db.items = db.items.filter(x => x.id !== id); db.queue = db.queue.filter(q => q.item_id !== id); save();
     },
-    async queueJoin(me, id) {
+    async queueJoin(me, id, offer) {
       auth(me); const i = db.items.find(i => i.id === id);
       if (!i) throw new Error("없는 물건이에요.");
       if (i.player_id === me.id) throw new Error("내가 올린 물건에는 줄을 설 수 없어요.");
       if (i.status === "done") throw new Error("거래가 끝난 물건이에요.");
-      if (!db.queue.some(q => q.item_id === id && q.player_id === me.id)) db.queue.push({ item_id: id, player_id: me.id, created_at: new Date().toISOString() });
+      const mine = db.queue.find(q => q.item_id === id && q.player_id === me.id);
+      if (mine) mine.offer = offer; else db.queue.push({ item_id: id, player_id: me.id, offer, created_at: new Date().toISOString() });
       save();
     },
     async queueLeave(me, id) { auth(me); db.queue = db.queue.filter(q => !(q.item_id === id && q.player_id === me.id)); save(); },
@@ -637,7 +645,7 @@ function viewDugeun() {
           <span class="item-title">${esc(i.title)}</span>
           <span class="item-price">${won(i.price)}</span>
           <span class="item-meta">${PIN}${esc(i.pickup)}</span>
-          <span class="item-queue">${q.length ? `${tokensHtml(q, 4)}<span>줄 ${q.length}명</span>` : `<span>아직 줄이 없어요</span>`}</span>
+          <span class="item-queue">${q.length ? `${tokensHtml(q, 4)}<span>줄 ${q.length}명</span>${topOffer(q) > 0 ? `<span class="offer-top">최고 ${won(topOffer(q))}</span>` : ""}` : `<span>아직 줄이 없어요</span>`}</span>
         </span>
       </button></li>`; }).join("")}</ul>`
     : `<p class="empty">${cat ? `${esc(cat)}에는 아직 올라온 물건이 없어요.` : "아직 올라온 물건이 없어요. 첫 물건을 올려 보세요."}</p>`}`;
@@ -646,28 +654,41 @@ function viewDugeun() {
   $("#dg-new").onclick = () => (state.me ? openItemForm() : needLogin());
 }
 
-// 줄 그림: 트랙 위에 선 순서대로 달리는 사람. 맨 끝 빈 자리를 누르면 줄을 선다.
-function laneHtml(item, q) {
+const topOffer = q => q.reduce((m, x) => (x.offer != null && x.offer > m ? x.offer : m), -1);
+
+// 줄 그림: 트랙 위에 선 순서대로 달리는 사람. 말풍선은 각자 적은 제시 가격.
+// 올린 사람에게는 각 러너가 버튼이 되어, 눌러서 팔 사람을 고른다.
+function laneHtml(item, q, picked) {
   const mine = !!state.me && item.player_id === state.me.id;
   const inLine = !!state.me && q.some(x => x.player_id === state.me.id);
   const canJoin = !mine && !inLine && item.status !== "done";
+  const canPick = mine && item.status !== "done";
+  const top = topOffer(q);
   return `<div class="lane" role="list" aria-label="줄 선 순서">
-    ${q.map((x, n) => { const me = state.me && x.player_id === state.me.id; return `
-      <span class="tok${me ? " me" : ""}" role="listitem"><em>${n + 1}</em>${RUNNER}<b>${me ? "나" : esc(nickOf(x.player_id))}</b></span>`; }).join("")}
-    ${canJoin ? `<button type="button" class="tok join" id="q-join" role="listitem"><em>${q.length + 1}</em>${RUNNER}<b>여기 서기</b></button>` : ""}
+    ${q.map((x, n) => {
+      const me = state.me && x.player_id === state.me.id, buyer = item.buyer_id === x.player_id;
+      const cls = `tok${me ? " me" : ""}${buyer ? " buyer" : ""}${picked === x.player_id ? " picked" : ""}`;
+      const inner = `<em>${n + 1}</em>
+        ${buyer ? `<span class="bubble sold">구매</span>` : x.offer != null ? `<span class="bubble${x.offer === top ? " top" : ""}">${x.offer === 0 ? "나눔" : x.offer.toLocaleString("ko-KR")}</span>` : `<span class="bubble none" aria-hidden="true"></span>`}
+        ${RUNNER}<b>${me ? "나" : esc(nickOf(x.player_id))}</b>`;
+      return canPick ? `<button type="button" class="${cls} pick-b" data-pick="${esc(x.player_id)}" aria-pressed="${picked === x.player_id}" role="listitem">${inner}</button>`
+        : `<span class="${cls}" role="listitem">${inner}</span>`; }).join("")}
+    ${canJoin ? `<button type="button" class="tok join" id="q-join" role="listitem"><em>${q.length + 1}</em><span class="bubble none" aria-hidden="true"></span>${RUNNER}<b>여기 서기</b></button>` : ""}
     ${!q.length && !canJoin ? `<span class="lane-empty">아직 줄 선 사람이 없어요</span>` : ""}
   </div>`;
 }
 
-function openItem(id) {
+function openItem(id, picked) {
   const dlg = $("#dlg"), item = state.items.find(i => i.id === id);
   if (!item) return;
   const q = queueOf(id), mine = !!state.me && item.player_id === state.me.id;
   const pos = state.me ? q.findIndex(x => x.player_id === state.me.id) : -1;
   const line = mine
-    ? (q.length ? `${q.length}명이 줄 서 있어요. 1번부터 톡방에서 연락해 보세요.` : "아직 줄 선 사람이 없어요.")
+    ? (item.status === "done" ? (item.buyer_id ? `${nickOf(item.buyer_id)} 님에게 판매 완료했어요.` : "거래 완료로 바꾼 물건이에요.")
+      : q.length ? `${q.length}명이 줄 서 있어요.${topOffer(q) > 0 ? ` 가장 높은 제시 가격은 ${won(topOffer(q))}이에요.` : ""} 팔 사람을 눌러서 골라 주세요.` : "아직 줄 선 사람이 없어요.")
+    : item.status === "done" ? (state.me && item.buyer_id === state.me.id ? "내가 사기로 한 물건이에요. 톡방에서 수령을 정해 주세요."
+        : item.buyer_id ? `${nickOf(item.buyer_id)} 님에게 팔렸어요.` : "거래가 끝난 물건이에요.")
     : pos >= 0 ? `줄 ${q.length}명 가운데 내 순서는 ${pos + 1}번이에요.`
-    : item.status === "done" ? "거래가 끝난 물건이에요."
     : q.length ? `지금 ${q.length}명이 줄 서 있어요.` : "첫 번째로 줄 설 수 있어요.";
   dlg.innerHTML = `
     <div class="sheet dg-sheet">
@@ -679,20 +700,32 @@ function openItem(id) {
       ${item.description ? `<p class="it-desc">${esc(item.description)}</p>` : ""}
       <dl class="it-info"><dt>수령처</dt><dd>${esc(item.pickup)}</dd><dt>올린 사람</dt><dd>${esc(nickOf(item.player_id))}</dd></dl>
       <h3>줄 서기</h3>
-      ${laneHtml(item, q)}
+      ${laneHtml(item, q, picked)}
       <p class="note">${esc(line)}</p>
-      ${pos >= 0 ? `<button type="button" class="btn ghost" id="q-leave">줄에서 나오기</button>` : ""}
-      ${!mine && pos < 0 && item.status !== "done" ? `<button type="button" class="btn" id="q-join2">줄 서기</button>` : ""}
+      ${!mine && item.status !== "done" ? `
+        <label class="field">${pos >= 0 ? "내 말풍선 가격" : "말풍선에 적을 가격"}<span class="price-in"><input id="q-offer" inputmode="numeric" maxlength="11" autocomplete="off" placeholder="안 적어도 돼요" value="${pos >= 0 && q[pos].offer != null ? q[pos].offer.toLocaleString("ko-KR") : ""}"><span>원</span></span></label>
+        <button type="button" class="btn" id="q-join2">${pos >= 0 ? "가격 바꾸기" : "줄 서기"}</button>` : ""}
+      ${pos >= 0 && item.status !== "done" ? `<button type="button" class="btn ghost" id="q-leave">줄에서 나오기</button>` : ""}
+      ${mine && item.status !== "done" && q.length ? `<button type="button" class="btn" id="it-sell"${picked ? "" : " disabled"}>${picked ? `${esc(nickOf(picked))} 님에게 판매 완료` : "팔 사람을 골라 주세요"}</button>` : ""}
       ${mine ? `<div class="seg" role="group" aria-label="거래 상태">${Object.keys(ITEM_STATUS).map(s => `<button type="button" data-st="${s}" aria-pressed="${item.status === s}">${ITEM_STATUS[s]}</button>`).join("")}</div>` : ""}
       ${mine || state.adminToken ? `<button type="button" class="linkish" id="it-del">${mine ? "이 물건 지우기" : "운영진 권한으로 지우기"}</button>` : ""}
     </div>`;
   const again = async () => { await refresh(); if (location.hash.replace(/^#\/?/, "") === "dugeun") viewDugeun(); state.items.some(i => i.id === id) ? openItem(id) : dlg.close(); };
   $("#it-close").onclick = () => dlg.close();
-  const join = btn => (state.me ? busy(btn, async () => { await api.queueJoin(state.me, id); await again(); toast("줄을 섰어요."); }) : (dlg.close(), needLogin()));
+  const offerIn = $("#q-offer", dlg);
+  if (offerIn) offerIn.oninput = () => { const d = offerIn.value.replace(/\D/g, "").slice(0, 9); offerIn.value = d ? Number(d).toLocaleString("ko-KR") : ""; };
+  const join = btn => {
+    if (!state.me) { dlg.close(); return needLogin(); }
+    const d = offerIn ? offerIn.value.replace(/\D/g, "") : "";
+    busy(btn, async () => { await api.queueJoin(state.me, id, d ? Number(d) : null); await again(); toast(pos >= 0 ? "가격을 바꿨어요." : "줄을 섰어요."); });
+  };
   ["#q-join", "#q-join2"].forEach(s => { const b = $(s, dlg); if (b) b.onclick = () => join(b); });
   const leave = $("#q-leave", dlg);
   if (leave) leave.onclick = () => busy(leave, async () => { await api.queueLeave(state.me, id); await again(); toast("줄에서 나왔어요."); });
   dlg.querySelectorAll("[data-st]").forEach(b => (b.onclick = () => busy(b, async () => { await api.itemStatus(state.me, id, b.dataset.st); await again(); })));
+  dlg.querySelectorAll("[data-pick]").forEach(b => (b.onclick = () => openItem(id, picked === b.dataset.pick ? null : b.dataset.pick)));
+  const sell = $("#it-sell", dlg);
+  if (sell && picked) sell.onclick = () => busy(sell, async () => { await api.itemSell(state.me, id, picked); await again(); toast(`${nickOf(picked)} 님에게 판매 완료했어요.`); });
   const del = $("#it-del", dlg);
   if (del) del.onclick = () => {
     if (del.dataset.sure !== "1") { del.dataset.sure = "1"; del.textContent = "한 번 더 누르면 지워져요. 되돌릴 수 없어요."; return; }
