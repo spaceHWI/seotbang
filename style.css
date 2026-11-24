@@ -282,13 +282,12 @@ body { padding-bottom: 5.5rem; }
 .dg-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: .75rem 1rem; }
 .dg-head h1 { display: flex; align-items: center; gap: .5rem; }
 .dg-head .lede { white-space: normal; margin-top: .375rem; }
-.beat { width: 1.15em; height: auto; flex: none; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.beat { width: 1.1em; height: auto; flex: none; overflow: visible; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .beat-heart { fill: var(--track); stroke: var(--peach); stroke-width: 2.5; }
 .beat-line { stroke: var(--cream); stroke-width: 2.5; }
 
-.chips { display: flex; gap: .375rem; margin: 1.25rem -1rem 1rem; padding: 0 1rem .25rem; overflow-x: auto; scrollbar-width: none; }
-.chips::-webkit-scrollbar { display: none; }
-.chips button { flex: none; padding: .45rem .8rem; border: 2px solid var(--cream); border-radius: 999px; background: transparent; color: var(--cream); font-weight: 600; font-size: .9375rem; cursor: pointer; white-space: nowrap; }
+.chips { display: flex; flex-wrap: wrap; gap: .375rem; margin: 1.25rem 0 1rem; }
+.chips button { flex: none; padding: .4rem .75rem; border: 2px solid var(--cream); border-radius: 999px; background: transparent; color: var(--cream); font-weight: 600; font-size: .9375rem; cursor: pointer; white-space: nowrap; }
 .chips button[aria-selected=true] { background: var(--cream); color: var(--ink); }
 
 .items { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .625rem; }

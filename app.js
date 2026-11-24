@@ -601,7 +601,7 @@ const ITEM_STATUS = { open: "판매 중", reserved: "예약 중", done: "거래 
 const won = n => (n === 0 ? "나눔" : n.toLocaleString("ko-KR") + "원");
 const nickOf = id => (state.players.find(p => p.id === id) || {}).nickname || "?";
 const queueOf = id => state.queue.filter(q => q.item_id === id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
-const BEAT = '<svg class="beat" viewBox="0 0 40 32" aria-hidden="true"><path class="beat-heart" d="M20 29C9 21 3 15.500 3 9.500A7.500 7.500 0 0120 6a7.500 7.500 0 0117 3.500C37 15.500 31 21 20 29z"/><path class="beat-line" d="M1 16h10l3-6 4 11 4-8 2 3h15"/></svg>'.replace(/\.500/g, ".5");
+const BEAT = '<svg class="beat" viewBox="0 0 40 36" aria-hidden="true"><path class="beat-heart" d="M20 33C8 24 4 18.5 4 12.5A8.5 8.5 0 0120 9.500a8.500 8.500 0 0116 3C36 18.500 32 24 20 33z"/><path class="beat-line" d="M9.500 18.500h5.500l2.500-5 4 10 3-7 1.500 2h4.500"/></svg>'.replace(/\.500/g, ".5");
 const PIN = '<svg class="pin" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.500S3.500 10 3.500 6.500a4.500 4.500 0 019 0C12.500 10 8 14.500 8 14.500z"/><circle cx="8" cy="6.500" r="1.500"/></svg>'.replace(/\.500/g, ".5");
 const needLogin = () => { toast("먼저 빙고판을 만들어 주세요. 같은 닉네임으로 두근도 써요.", true); location.hash = "#/"; };
 
