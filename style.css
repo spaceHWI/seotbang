@@ -369,3 +369,6 @@ textarea { resize: vertical; }
 .bubble.sold { background: var(--forest); color: var(--cream); }
 .bubble.sold::after { border-top-color: var(--forest); }
 .btn:disabled { cursor: default; }
+.enter-step { display: grid; gap: .75rem; }
+.who-line { margin: 0; overflow-wrap: anywhere; }
+.enter .linkish { justify-self: center; color: var(--ink); }

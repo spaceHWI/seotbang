@@ -433,47 +433,59 @@ function viewHome() {
       <p class="lede">달리고, 찍고, 줄을 그어요.</p>
     </section>
     ${HOWTO}
-    <section class="enter">
-      <form id="enter-form" novalidate>
-        <label>닉네임<input name="nick" maxlength="12" autocomplete="username" required placeholder="톡방에서 쓰는 이름"></label>
-        <p class="small" id="nick-help" hidden></p>
-        <label>비밀번호${pwField("pass", "4자 이상", "current-password")}</label>
-        <label id="pass2-wrap" hidden>비밀번호 한 번 더${pwField("pass2", "같은 비밀번호", "new-password")}</label>
-        <p class="small" id="enter-help" hidden>비밀번호는 다른 기기에서 이어서 할 때 써요. 잊어버리면 운영진도 찾아 줄 수 없어요.</p>
-        <button class="btn" id="enter-go">내 빙고판 열기</button>
-      </form>
-    </section>
+    <section class="enter" id="enter-box"></section>
     <section>
       <h2>빙고판 미리 보기</h2>
       <div class="board"><div class="grid">${CELLS.map(([t, s], i) => `<div class="cell is-empty">${icon(i)}<span class="cell-title">${esc(t)}</span>${s ? `<span class="cell-sub">${esc(s)}</span>` : ""}</div>`).join("")}</div></div>
     </section>
     ${rankingHtml()}`;
-  bindPw(app);
-  const f = $("#enter-form");
-  const isNew = () => { const n = f.nick.value.trim(); return !!n && !state.players.some(p => p.nickname === n); };
-  const sync = () => {
-    const n = f.nick.value.trim(), fresh = isNew();
-    $("#pass2-wrap").hidden = !fresh; $("#enter-help").hidden = !fresh;
-    $("#enter-go").textContent = fresh ? "빙고판 만들기" : "내 빙고판 열기";
-    const help = $("#nick-help"); help.hidden = !n;
-    help.textContent = fresh ? "새 닉네임이에요. 비밀번호를 정하고 한 번 더 입력해 주세요." : "이미 있는 닉네임이에요. 비밀번호를 넣으면 이어서 할 수 있어요.";
+  // 닉네임 → 비밀번호 두 단계. 닉네임 칸이 있는 동안에는 비밀번호 칸을 화면에 두지 않는다.
+  // (아이폰은 비밀번호 칸 바로 위 입력칸을 로그인 아이디로 보고 영문 자판만 띄울 수 있다)
+  const box = $("#enter-box");
+  const stepNick = keep => {
+    box.innerHTML = `
+      <div class="enter-step">
+        <label>닉네임<input id="nick-in" lang="ko" inputmode="text" maxlength="12" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next" placeholder="톡방에서 쓰는 이름" value="${esc(keep || "")}"></label>
+        <p class="small">처음이면 새로 만들고, 만든 적 있으면 이어서 해요.</p>
+        <button type="button" class="btn" id="nick-go">다음</button>
+      </div>`;
+    const inp = $("#nick-in"), go = $("#nick-go");
+    const next = () => {
+      const nick = inp.value.trim();
+      if (!nick) return toast("닉네임을 입력해 주세요.", true);
+      busy(go, async () => { await refresh(); stepPass(nick, !state.players.some(p => p.nickname === nick)); });
+    };
+    go.onclick = next;
+    inp.onkeydown = e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); next(); } };
   };
-  f.nick.addEventListener("input", sync);
-  f.onsubmit = e => {
-    e.preventDefault();
-    const nick = f.nick.value.trim(), pass = f.pass.value;
-    if (!nick) return toast("닉네임을 입력해 주세요.", true);
-    if (pass.length < 4) return toast("비밀번호는 4자 이상으로 정해 주세요.", true);
-    busy($("#enter-go"), async () => {
-      await refresh(); sync();
-      const fresh = isNew();
-      if (fresh && f.pass2.value !== pass) { f.pass2.focus(); throw new Error(f.pass2.value ? "비밀번호 두 개가 서로 달라요." : "비밀번호를 한 번 더 입력해 주세요."); }
-      const r = await (fresh ? api.join(nick, pass) : api.login(nick, pass));
-      setMe({ id: r.id, nickname: nick, token: r.token });
-      await refresh(); route();
-      if (fresh) toast("빙고판이 만들어졌어요. 칸을 눌러 인증샷을 올려 보세요.");
-    });
+  const stepPass = (nick, fresh) => {
+    box.innerHTML = `
+      <form id="enter-form" novalidate>
+        <p class="who-line"><b>${esc(nick)}</b> 님, ${fresh ? "처음이네요. 비밀번호를 정해 주세요." : "다시 오셨네요. 비밀번호를 넣어 주세요."}</p>
+        <label>비밀번호${pwField("pass", "4자 이상", fresh ? "new-password" : "current-password")}</label>
+        ${fresh ? `<label>비밀번호 한 번 더${pwField("pass2", "같은 비밀번호", "new-password")}</label>
+        <p class="small">비밀번호는 다른 기기에서 이어서 할 때 써요. 잊어버리면 운영진도 찾아 줄 수 없어요.</p>` : ""}
+        <button class="btn" id="enter-go">${fresh ? "빙고판 만들기" : "내 빙고판 열기"}</button>
+        <button type="button" class="linkish" id="nick-back">닉네임 다시 적기</button>
+      </form>`;
+    bindPw(box);
+    const f = $("#enter-form");
+    $("#nick-back").onclick = () => stepNick(nick);
+    f.pass.focus();
+    f.onsubmit = e => {
+      e.preventDefault();
+      const pass = f.pass.value;
+      if (pass.length < 4) return toast("비밀번호는 4자 이상으로 정해 주세요.", true);
+      if (fresh && f.pass2.value !== pass) { f.pass2.focus(); return toast(f.pass2.value ? "비밀번호 두 개가 서로 달라요." : "비밀번호를 한 번 더 입력해 주세요.", true); }
+      busy($("#enter-go"), async () => {
+        const r = await (fresh ? api.join(nick, pass) : api.login(nick, pass));
+        setMe({ id: r.id, nickname: nick, token: r.token });
+        await refresh(); route();
+        if (fresh) toast("빙고판이 만들어졌어요. 칸을 눌러 인증샷을 올려 보세요.");
+      });
+    };
   };
+  stepNick();
 }
 
 /* ---------- 화면: 참가자 ---------- */
