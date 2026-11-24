@@ -603,11 +603,13 @@ const nickOf = id => (state.players.find(p => p.id === id) || {}).nickname || "?
 const queueOf = id => state.queue.filter(q => q.item_id === id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
 const BEAT = '<svg class="beat" viewBox="0 0 40 36" aria-hidden="true"><path class="beat-heart" d="M20 33C8 24 4 18.5 4 12.5A8.5 8.5 0 0120 9.500a8.500 8.500 0 0116 3C36 18.500 32 24 20 33z"/><path class="beat-line" d="M9.500 18.500h5.500l2.500-5 4 10 3-7 1.500 2h4.500"/></svg>'.replace(/\.500/g, ".5");
 const PIN = '<svg class="pin" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.500S3.500 10 3.500 6.500a4.500 4.500 0 019 0C12.500 10 8 14.500 8 14.500z"/><circle cx="8" cy="6.500" r="1.500"/></svg>'.replace(/\.500/g, ".5");
+// 달리는 사람 픽토그램 (줄 앞쪽인 왼쪽을 보고 달림)
+const RUNNER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><g transform="translate(32 0) scale(-1 1)"><circle cx="20.500" cy="5.500" r="3.800"/><path d="M18 11.500L14 21M18 12l5.500 3 3-3.500M17 12.500l-5.500.500-2.500 4M14 21l6.500 3-1 8M14 21l-4.500 5.500H3.500"/></g></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
 const needLogin = () => { toast("먼저 빙고판을 만들어 주세요. 같은 닉네임으로 두근도 써요.", true); location.hash = "#/"; };
 
 function tokensHtml(q, max) {
-  return q.slice(0, max).map(x => `<i class="tok-s${state.me && x.player_id === state.me.id ? " me" : ""}">${esc([...nickOf(x.player_id)][0] || "?")}</i>`).join("") +
-    (q.length > max ? `<i class="tok-s more">+${q.length - max}</i>` : "");
+  return q.slice(0, max).map(x => `<i class="tok-s${state.me && x.player_id === state.me.id ? " me" : ""}">${RUNNER}</i>`).join("") +
+    (q.length > max ? `<i class="tok-more">+${q.length - max}</i>` : "");
 }
 
 function viewDugeun() {
@@ -644,16 +646,15 @@ function viewDugeun() {
   $("#dg-new").onclick = () => (state.me ? openItemForm() : needLogin());
 }
 
-// 줄 그림: 왼쪽 물건을 향해 선 순서대로. 맨 끝 빈 자리를 누르면 줄을 선다.
+// 줄 그림: 트랙 위에 선 순서대로 달리는 사람. 맨 끝 빈 자리를 누르면 줄을 선다.
 function laneHtml(item, q) {
   const mine = !!state.me && item.player_id === state.me.id;
   const inLine = !!state.me && q.some(x => x.player_id === state.me.id);
   const canJoin = !mine && !inLine && item.status !== "done";
   return `<div class="lane" role="list" aria-label="줄 선 순서">
-    <span class="lane-goal" role="listitem"><b>물건</b></span>
-    ${q.map((x, n) => { const me = state.me && x.player_id === state.me.id; const nm = nickOf(x.player_id); return `
-      <span class="tok${me ? " me" : ""}" role="listitem"><em>${n + 1}</em><i>${esc([...nm][0] || "?")}</i><b>${me ? "나" : esc(nm)}</b></span>`; }).join("")}
-    ${canJoin ? `<button type="button" class="tok join" id="q-join" role="listitem"><em>${q.length + 1}</em><i>+</i><b>여기 서기</b></button>` : ""}
+    ${q.map((x, n) => { const me = state.me && x.player_id === state.me.id; return `
+      <span class="tok${me ? " me" : ""}" role="listitem"><em>${n + 1}</em>${RUNNER}<b>${me ? "나" : esc(nickOf(x.player_id))}</b></span>`; }).join("")}
+    ${canJoin ? `<button type="button" class="tok join" id="q-join" role="listitem"><em>${q.length + 1}</em>${RUNNER}<b>여기 서기</b></button>` : ""}
     ${!q.length && !canJoin ? `<span class="lane-empty">아직 줄 선 사람이 없어요</span>` : ""}
   </div>`;
 }
