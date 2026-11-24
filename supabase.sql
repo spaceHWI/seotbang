@@ -288,3 +288,108 @@ drop policy if exists "bingo proofs upload" on storage.objects;
 create policy "bingo proofs upload" on storage.objects
   for insert to anon, authenticated
   with check (bucket_id = 'bingo-proofs' and public.bingo_upload_ok(name));
+
+-- 6) 두근 (장터) -------------------------------------------------------
+create table if not exists public.bingo_items (
+  id uuid primary key default gen_random_uuid(),
+  player_id uuid not null references public.bingo_players(id) on delete cascade,
+  title text not null check (char_length(title) between 1 and 40),
+  category text not null check (category in ('신발','의류','가방·조끼','장비','시계·전자기기','보급·영양','기타')),
+  description text not null default '' check (char_length(description) <= 500),
+  price integer not null check (price between 0 and 100000000),
+  pickup text not null check (char_length(pickup) between 1 and 60),
+  photo_path text not null,
+  status text not null default 'open' check (status in ('open','reserved','done')),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.bingo_item_queue (
+  item_id uuid not null references public.bingo_items(id) on delete cascade,
+  player_id uuid not null references public.bingo_players(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (item_id, player_id)
+);
+
+alter table public.bingo_items enable row level security;
+alter table public.bingo_item_queue enable row level security;
+revoke all on public.bingo_items, public.bingo_item_queue from anon, authenticated;
+grant select on public.bingo_items, public.bingo_item_queue to anon, authenticated;
+
+drop policy if exists "bingo items read" on public.bingo_items;
+create policy "bingo items read" on public.bingo_items for select using (true);
+drop policy if exists "bingo item queue read" on public.bingo_item_queue;
+create policy "bingo item queue read" on public.bingo_item_queue for select using (true);
+
+create or replace function public.bingo_item_post(
+  p_token text, p_title text, p_category text, p_description text, p_price int, p_pickup text, p_path text)
+returns uuid language plpgsql security definer set search_path = public, extensions as $$
+declare v_player uuid := bingo__player(p_token); v_id uuid;
+begin
+  if v_player is null then raise exception '로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
+  if char_length(btrim(coalesce(p_title, ''))) not between 1 and 40 then raise exception '물건 이름은 1~40자로 적어 주세요.'; end if;
+  if p_category not in ('신발','의류','가방·조끼','장비','시계·전자기기','보급·영양','기타') then raise exception '카테고리를 골라 주세요.'; end if;
+  if char_length(coalesce(p_description, '')) > 500 then raise exception '설명은 500자까지 적을 수 있어요.'; end if;
+  if p_price is null or p_price < 0 or p_price > 100000000 then raise exception '가격을 다시 확인해 주세요.'; end if;
+  if char_length(btrim(coalesce(p_pickup, ''))) not between 1 and 60 then raise exception '수령처는 1~60자로 적어 주세요.'; end if;
+  if p_path !~ ('^' || v_player::text || '/90-[0-9]{10,16}\.jpg$') then raise exception '사진 경로가 맞지 않아요.'; end if;
+  if (select count(*) from bingo_items where player_id = v_player and status <> 'done') >= 20 then
+    raise exception '거래 중인 물건은 20개까지 올릴 수 있어요.';
+  end if;
+  insert into bingo_items (player_id, title, category, description, price, pickup, photo_path)
+  values (v_player, btrim(p_title), p_category, btrim(coalesce(p_description, '')), p_price, btrim(p_pickup), p_path)
+  returning id into v_id;
+  return v_id;
+end $$;
+
+create or replace function public.bingo_item_status(p_token text, p_item uuid, p_status text)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+declare v_player uuid := bingo__player(p_token);
+begin
+  if v_player is null then raise exception '로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
+  if p_status not in ('open','reserved','done') then raise exception '없는 상태예요.'; end if;
+  update bingo_items set status = p_status where id = p_item and player_id = v_player;
+  if not found then raise exception '내가 올린 물건만 바꿀 수 있어요.'; end if;
+end $$;
+
+-- 올린 사람 또는 운영진이 지울 수 있음
+create or replace function public.bingo_item_delete(p_token text, p_item uuid)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+declare v_player uuid := bingo__player(p_token);
+begin
+  if bingo__is_admin(p_token) then
+    delete from bingo_items where id = p_item;
+    return;
+  end if;
+  if v_player is null then raise exception '로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
+  delete from bingo_items where id = p_item and player_id = v_player;
+  if not found then raise exception '내가 올린 물건만 지울 수 있어요.'; end if;
+end $$;
+
+create or replace function public.bingo_item_queue_join(p_token text, p_item uuid)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+declare v_player uuid := bingo__player(p_token); v_owner uuid; v_status text;
+begin
+  if v_player is null then raise exception '로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
+  select player_id, status into v_owner, v_status from bingo_items where id = p_item;
+  if v_owner is null then raise exception '없는 물건이에요.'; end if;
+  if v_owner = v_player then raise exception '내가 올린 물건에는 줄을 설 수 없어요.'; end if;
+  if v_status = 'done' then raise exception '거래가 끝난 물건이에요.'; end if;
+  if (select count(*) from bingo_item_queue where item_id = p_item) >= 30 then raise exception '줄이 꽉 찼어요.'; end if;
+  insert into bingo_item_queue (item_id, player_id) values (p_item, v_player) on conflict do nothing;
+end $$;
+
+create or replace function public.bingo_item_queue_leave(p_token text, p_item uuid)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+declare v_player uuid := bingo__player(p_token);
+begin
+  if v_player is null then raise exception '로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
+  delete from bingo_item_queue where item_id = p_item and player_id = v_player;
+end $$;
+
+grant execute on function
+  public.bingo_item_post(text, text, text, text, int, text, text),
+  public.bingo_item_status(text, uuid, text),
+  public.bingo_item_delete(text, uuid),
+  public.bingo_item_queue_join(text, uuid),
+  public.bingo_item_queue_leave(text, uuid)
+to anon, authenticated;

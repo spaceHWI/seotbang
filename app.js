@@ -118,6 +118,27 @@ function liveApi() {
       await rpc("bingo_submit", { p_token: me.token, p_cell: cell, p_path: path });
     },
     cancel: (me, cell) => rpc("bingo_cancel", { p_token: me.token, p_cell: cell }),
+    async listItems() {
+      const { data, error } = await sb.from("bingo_items")
+        .select("id,player_id,title,category,description,price,pickup,photo_path,status,created_at").order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+      return data.map(i => ({ ...i, photo_url: sb.storage.from(BUCKET).getPublicUrl(i.photo_path).data.publicUrl }));
+    },
+    async listQueue() {
+      const { data, error } = await sb.from("bingo_item_queue").select("item_id,player_id,created_at").order("created_at");
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    async itemPost(me, d, blob) {
+      const path = `${me.id}/90-${Date.now()}.jpg`;
+      const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: "image/jpeg", headers: { "x-bingo-token": me.token } });
+      if (up.error) throw new Error("사진을 올리지 못했어요. " + up.error.message);
+      return rpc("bingo_item_post", { p_token: me.token, p_title: d.title, p_category: d.category, p_description: d.description, p_price: d.price, p_pickup: d.pickup, p_path: path });
+    },
+    itemStatus: (me, id, status) => rpc("bingo_item_status", { p_token: me.token, p_item: id, p_status: status }),
+    itemDelete: (token, id) => rpc("bingo_item_delete", { p_token: token, p_item: id }),
+    queueJoin: (me, id) => rpc("bingo_item_queue_join", { p_token: me.token, p_item: id }),
+    queueLeave: (me, id) => rpc("bingo_item_queue_leave", { p_token: me.token, p_item: id }),
     adminIsSet: () => rpc("bingo_admin_is_set", {}),
     adminInit: pass => rpc("bingo_admin_init", { p_pass: pass }),
     async adminLogin(pass) {
@@ -134,7 +155,7 @@ function liveApi() {
 function demoApi() {
   const KEY = "stb-bingo-demo";
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
-  const db = Object.assign({ players: [], subs: [], admin: null }, load());
+  const db = Object.assign({ players: [], subs: [], admin: null, items: [], queue: [] }, load());
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* 용량 초과 시 화면에만 유지 */ } };
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
   const toDataUrl = blob => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(blob); });
@@ -166,6 +187,28 @@ function demoApi() {
       save();
     },
     async cancel(me, cell) { auth(me); db.subs = db.subs.filter(s => !(s.player_id === me.id && s.cell === cell && s.status !== "approved")); save(); },
+    async listItems() { return db.items.map(i => ({ ...i })); },
+    async listQueue() { return db.queue.map(q => ({ ...q })); },
+    async itemPost(me, d, blob) {
+      auth(me);
+      const id = uid(); db.items.push({ id, player_id: me.id, ...d, photo_url: await toDataUrl(blob), status: "open", created_at: new Date().toISOString() }); save(); return id;
+    },
+    async itemStatus(me, id, status) { auth(me); const i = db.items.find(i => i.id === id && i.player_id === me.id); if (!i) throw new Error("내가 올린 물건만 바꿀 수 있어요."); i.status = status; save(); },
+    async itemDelete(token, id) {
+      const i = db.items.find(i => i.id === id); if (!i) return;
+      const owner = db.players.find(p => p.id === i.player_id);
+      if (!(db.admin && db.admin === token) && !(owner && owner.pass === token)) throw new Error("내가 올린 물건만 지울 수 있어요.");
+      db.items = db.items.filter(x => x.id !== id); db.queue = db.queue.filter(q => q.item_id !== id); save();
+    },
+    async queueJoin(me, id) {
+      auth(me); const i = db.items.find(i => i.id === id);
+      if (!i) throw new Error("없는 물건이에요.");
+      if (i.player_id === me.id) throw new Error("내가 올린 물건에는 줄을 설 수 없어요.");
+      if (i.status === "done") throw new Error("거래가 끝난 물건이에요.");
+      if (!db.queue.some(q => q.item_id === id && q.player_id === me.id)) db.queue.push({ item_id: id, player_id: me.id, created_at: new Date().toISOString() });
+      save();
+    },
+    async queueLeave(me, id) { auth(me); db.queue = db.queue.filter(q => !(q.item_id === id && q.player_id === me.id)); save(); },
     async adminIsSet() { return !!db.admin; },
     async adminInit(pass) {
       if (pass.length < 10) throw new Error("운영진 비밀번호는 10자 이상으로 정해 주세요.");
@@ -187,7 +230,7 @@ const api = LIVE ? liveApi() : demoApi();
 /* ---------- 상태 ---------- */
 const ME_KEY = "stb-bingo-me";
 const state = {
-  players: [], subs: [],
+  players: [], subs: [], items: [], queue: [], cat: "",
   me: (() => { try { const m = JSON.parse(localStorage.getItem(ME_KEY)); return m && m.token ? m : null; } catch { return null; } })(),
   adminToken: sessionStorage.getItem("stb-bingo-admin") || "",
   adminFilter: "pending",
@@ -196,8 +239,8 @@ const state = {
 const setMe = me => { state.me = me; me ? localStorage.setItem(ME_KEY, JSON.stringify(me)) : localStorage.removeItem(ME_KEY); };
 
 async function refresh() {
-  const [players, subs] = await Promise.all([api.listPlayers(), api.listSubs()]);
-  state.players = players; state.subs = subs;
+  const [players, subs, items, queue] = await Promise.all([api.listPlayers(), api.listSubs(), api.listItems().catch(() => []), api.listQueue().catch(() => [])]);
+  state.players = players; state.subs = subs; state.items = items; state.queue = queue;
   if (state.me && !players.some(p => p.id === state.me.id)) setMe(null);
 }
 
@@ -229,8 +272,8 @@ async function busy(btn, fn) {
 
 function renderNav() {
   $("#nav").innerHTML = state.me
-    ? `<a href="#/">내 빙고판</a><a href="#/all">참가자</a><a href="#/admin">운영진</a><button type="button" class="linkish" id="logout">나가기</button>`
-    : `<a href="#/">시작하기</a><a href="#/all">참가자</a><a href="#/admin">운영진</a>`;
+    ? `<a href="#/">내 빙고판</a><a href="#/all">참가자</a><a href="#/dugeun">두근</a><a href="#/admin">운영진</a><button type="button" class="linkish" id="logout">나가기</button>`
+    : `<a href="#/">시작하기</a><a href="#/all">참가자</a><a href="#/dugeun">두근</a><a href="#/admin">운영진</a>`;
   const lo = $("#logout");
   if (lo) lo.onclick = () => { if (confirm("이 기기에서 로그아웃할까요? 기록은 그대로 남아요.")) { api.logout(state.me.token).catch(() => {}); setMe(null); route(); } };
 }
@@ -552,12 +595,161 @@ async function viewAdmin() {
   }));
 }
 
+/* ---------- 두근 (장터) ---------- */
+const CATS = ["신발", "의류", "가방·조끼", "장비", "시계·전자기기", "보급·영양", "기타"];
+const ITEM_STATUS = { open: "판매 중", reserved: "예약 중", done: "거래 완료" };
+const won = n => (n === 0 ? "나눔" : n.toLocaleString("ko-KR") + "원");
+const nickOf = id => (state.players.find(p => p.id === id) || {}).nickname || "?";
+const queueOf = id => state.queue.filter(q => q.item_id === id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+const BEAT = '<svg class="beat" viewBox="0 0 40 32" aria-hidden="true"><path class="beat-heart" d="M20 29C9 21 3 15.500 3 9.500A7.500 7.500 0 0120 6a7.500 7.500 0 0117 3.500C37 15.500 31 21 20 29z"/><path class="beat-line" d="M1 16h10l3-6 4 11 4-8 2 3h15"/></svg>'.replace(/\.500/g, ".5");
+const PIN = '<svg class="pin" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.500S3.500 10 3.500 6.500a4.500 4.500 0 019 0C12.500 10 8 14.500 8 14.500z"/><circle cx="8" cy="6.500" r="1.500"/></svg>'.replace(/\.500/g, ".5");
+const needLogin = () => { toast("먼저 빙고판을 만들어 주세요. 같은 닉네임으로 두근도 써요.", true); location.hash = "#/"; };
+
+function tokensHtml(q, max) {
+  return q.slice(0, max).map(x => `<i class="tok-s${state.me && x.player_id === state.me.id ? " me" : ""}">${esc([...nickOf(x.player_id)][0] || "?")}</i>`).join("") +
+    (q.length > max ? `<i class="tok-s more">+${q.length - max}</i>` : "");
+}
+
+function viewDugeun() {
+  const app = $("#app"), cat = state.cat;
+  const order = { open: 0, reserved: 1, done: 2 };
+  const all = [...state.items].sort((a, b) => order[a.status] - order[b.status] || (a.created_at < b.created_at ? 1 : -1));
+  const list = cat ? all.filter(i => i.category === cat) : all;
+  const count = c => all.filter(i => i.category === c).length;
+  app.innerHTML = `
+    <section class="dg-head">
+      <div>
+        <h1>${BEAT}두근</h1>
+        <p class="lede">서트방 러너들의 장터. 갖고 싶으면 줄부터 서요.</p>
+      </div>
+      <button type="button" class="btn" id="dg-new">물건 올리기</button>
+    </section>
+    <div class="chips" role="tablist" aria-label="카테고리">
+      <button type="button" role="tab" data-cat="" aria-selected="${!cat}">전체 ${all.length}</button>
+      ${CATS.map(c => `<button type="button" role="tab" data-cat="${esc(c)}" aria-selected="${cat === c}">${esc(c)} ${count(c)}</button>`).join("")}
+    </div>
+    ${list.length ? `<ul class="items">${list.map(i => { const q = queueOf(i.id); return `
+      <li><button type="button" class="item is-${i.status}" data-item="${esc(i.id)}">
+        <span class="item-photo" style="background-image:url('${esc(cssUrl(i.photo_url))}')">${i.status !== "open" ? `<span class="badge">${ITEM_STATUS[i.status]}</span>` : ""}</span>
+        <span class="item-body">
+          <span class="item-title">${esc(i.title)}</span>
+          <span class="item-price">${won(i.price)}</span>
+          <span class="item-meta">${PIN}${esc(i.pickup)}</span>
+          <span class="item-queue">${q.length ? `${tokensHtml(q, 4)}<span>줄 ${q.length}명</span>` : `<span>아직 줄이 없어요</span>`}</span>
+        </span>
+      </button></li>`; }).join("")}</ul>`
+    : `<p class="empty">${cat ? `${esc(cat)}에는 아직 올라온 물건이 없어요.` : "아직 올라온 물건이 없어요. 첫 물건을 올려 보세요."}</p>`}`;
+  app.querySelectorAll("[data-cat]").forEach(b => (b.onclick = () => { state.cat = b.dataset.cat; viewDugeun(); }));
+  app.querySelectorAll("[data-item]").forEach(b => (b.onclick = () => openItem(b.dataset.item)));
+  $("#dg-new").onclick = () => (state.me ? openItemForm() : needLogin());
+}
+
+// 줄 그림: 왼쪽 물건을 향해 선 순서대로. 맨 끝 빈 자리를 누르면 줄을 선다.
+function laneHtml(item, q) {
+  const mine = !!state.me && item.player_id === state.me.id;
+  const inLine = !!state.me && q.some(x => x.player_id === state.me.id);
+  const canJoin = !mine && !inLine && item.status !== "done";
+  return `<div class="lane" role="list" aria-label="줄 선 순서">
+    <span class="lane-goal" role="listitem"><b>물건</b></span>
+    ${q.map((x, n) => { const me = state.me && x.player_id === state.me.id; const nm = nickOf(x.player_id); return `
+      <span class="tok${me ? " me" : ""}" role="listitem"><em>${n + 1}</em><i>${esc([...nm][0] || "?")}</i><b>${me ? "나" : esc(nm)}</b></span>`; }).join("")}
+    ${canJoin ? `<button type="button" class="tok join" id="q-join" role="listitem"><em>${q.length + 1}</em><i>+</i><b>여기 서기</b></button>` : ""}
+    ${!q.length && !canJoin ? `<span class="lane-empty">아직 줄 선 사람이 없어요</span>` : ""}
+  </div>`;
+}
+
+function openItem(id) {
+  const dlg = $("#dlg"), item = state.items.find(i => i.id === id);
+  if (!item) return;
+  const q = queueOf(id), mine = !!state.me && item.player_id === state.me.id;
+  const pos = state.me ? q.findIndex(x => x.player_id === state.me.id) : -1;
+  const line = mine
+    ? (q.length ? `${q.length}명이 줄 서 있어요. 1번부터 톡방에서 연락해 보세요.` : "아직 줄 선 사람이 없어요.")
+    : pos >= 0 ? `줄 ${q.length}명 가운데 내 순서는 ${pos + 1}번이에요.`
+    : item.status === "done" ? "거래가 끝난 물건이에요."
+    : q.length ? `지금 ${q.length}명이 줄 서 있어요.` : "첫 번째로 줄 설 수 있어요.";
+  dlg.innerHTML = `
+    <div class="sheet dg-sheet">
+      <button type="button" class="close" id="it-close">닫기</button>
+      <img class="proof" src="${esc(item.photo_url)}" alt="${esc(item.title)} 사진">
+      <p class="it-tags"><span class="tagc">${esc(item.category)}</span><span class="tagc st-${item.status}">${ITEM_STATUS[item.status]}</span></p>
+      <h2>${esc(item.title)}</h2>
+      <p class="it-price">${won(item.price)}</p>
+      ${item.description ? `<p class="it-desc">${esc(item.description)}</p>` : ""}
+      <dl class="it-info"><dt>수령처</dt><dd>${esc(item.pickup)}</dd><dt>올린 사람</dt><dd>${esc(nickOf(item.player_id))}</dd></dl>
+      <h3>줄 서기</h3>
+      ${laneHtml(item, q)}
+      <p class="note">${esc(line)}</p>
+      ${pos >= 0 ? `<button type="button" class="btn ghost" id="q-leave">줄에서 나오기</button>` : ""}
+      ${!mine && pos < 0 && item.status !== "done" ? `<button type="button" class="btn" id="q-join2">줄 서기</button>` : ""}
+      ${mine ? `<div class="seg" role="group" aria-label="거래 상태">${Object.keys(ITEM_STATUS).map(s => `<button type="button" data-st="${s}" aria-pressed="${item.status === s}">${ITEM_STATUS[s]}</button>`).join("")}</div>` : ""}
+      ${mine || state.adminToken ? `<button type="button" class="linkish" id="it-del">${mine ? "이 물건 지우기" : "운영진 권한으로 지우기"}</button>` : ""}
+    </div>`;
+  const again = async () => { await refresh(); if (location.hash.replace(/^#\/?/, "") === "dugeun") viewDugeun(); state.items.some(i => i.id === id) ? openItem(id) : dlg.close(); };
+  $("#it-close").onclick = () => dlg.close();
+  const join = btn => (state.me ? busy(btn, async () => { await api.queueJoin(state.me, id); await again(); toast("줄을 섰어요."); }) : (dlg.close(), needLogin()));
+  ["#q-join", "#q-join2"].forEach(s => { const b = $(s, dlg); if (b) b.onclick = () => join(b); });
+  const leave = $("#q-leave", dlg);
+  if (leave) leave.onclick = () => busy(leave, async () => { await api.queueLeave(state.me, id); await again(); toast("줄에서 나왔어요."); });
+  dlg.querySelectorAll("[data-st]").forEach(b => (b.onclick = () => busy(b, async () => { await api.itemStatus(state.me, id, b.dataset.st); await again(); })));
+  const del = $("#it-del", dlg);
+  if (del) del.onclick = () => {
+    if (del.dataset.sure !== "1") { del.dataset.sure = "1"; del.textContent = "한 번 더 누르면 지워져요. 되돌릴 수 없어요."; return; }
+    busy(del, async () => { await api.itemDelete(mine ? state.me.token : state.adminToken, id); await again(); toast("물건을 지웠어요."); });
+  };
+  if (!dlg.open) dlg.showModal();
+}
+
+function openItemForm() {
+  const dlg = $("#dlg");
+  dlg.innerHTML = `
+    <form class="sheet dg-sheet" id="it-form" novalidate>
+      <button type="button" class="close" id="it-close">닫기</button>
+      <h2>물건 올리기</h2>
+      <label class="pick"><input type="file" accept="image/*" id="it-file"><span>사진 고르기</span></label>
+      <img class="proof" id="it-prev" alt="고른 사진 미리보기" hidden>
+      <label class="field">물건 이름<input name="title" maxlength="40" placeholder="예: 트레일화 270mm" autocomplete="off"></label>
+      <label class="field">카테고리<select name="category"><option value="">골라 주세요</option>${CATS.map(c => `<option>${esc(c)}</option>`).join("")}</select></label>
+      <label class="field">가격<span class="price-in"><input name="price" inputmode="numeric" maxlength="11" placeholder="0" autocomplete="off"><span>원</span></span></label>
+      <label class="check"><input type="checkbox" name="free"> 나눔으로 올리기</label>
+      <label class="field">수령처<input name="pickup" maxlength="60" placeholder="예: 토요일 모닝벙, 월드컵경기장 트랙" autocomplete="off"></label>
+      <label class="field">설명<textarea name="description" maxlength="500" rows="4" placeholder="상태, 사이즈, 산 시기 같은 걸 적어 주세요"></textarea></label>
+      <button class="btn" id="it-go">올리기</button>
+    </form>`;
+  const f = $("#it-form"), file = $("#it-file"), prev = $("#it-prev");
+  let blob = null;
+  $("#it-close").onclick = () => dlg.close();
+  file.onchange = async () => {
+    if (!file.files[0]) return;
+    try { blob = await shrink(file.files[0]); } catch (e) { return toast(e.message, true); }
+    prev.src = URL.createObjectURL(blob); prev.hidden = false; file.nextElementSibling.textContent = "다른 사진 고르기";
+  };
+  f.price.oninput = () => { const d = f.price.value.replace(/\D/g, "").slice(0, 9); f.price.value = d ? Number(d).toLocaleString("ko-KR") : ""; };
+  f.free.onchange = () => { f.price.disabled = f.free.checked; if (f.free.checked) f.price.value = ""; };
+  f.onsubmit = e => {
+    e.preventDefault();
+    const title = f.title.value.trim(), category = f.category.value, pickup = f.pickup.value.trim();
+    const digits = f.price.value.replace(/\D/g, "");
+    if (!blob) return toast("물건 사진을 골라 주세요.", true);
+    if (!title) return toast("물건 이름을 적어 주세요.", true);
+    if (!category) return toast("카테고리를 골라 주세요.", true);
+    if (!f.free.checked && !digits) return toast("가격을 적거나 나눔을 골라 주세요.", true);
+    if (!pickup) return toast("수령처를 적어 주세요.", true);
+    busy($("#it-go"), async () => {
+      await api.itemPost(state.me, { title, category, pickup, price: f.free.checked ? 0 : Number(digits), description: f.description.value.trim() }, blob);
+      await refresh(); dlg.close(); state.cat = ""; viewDugeun(); toast("물건을 올렸어요.");
+    });
+  };
+  dlg.showModal();
+}
+
 /* ---------- 라우터 ---------- */
 function route() {
   renderNav();
   const h = location.hash.replace(/^#\/?/, "");
   document.body.classList.toggle("demo", !LIVE);
   if (h === "all") viewAll();
+  else if (h === "dugeun") viewDugeun();
   else if (h.startsWith("u/")) viewUser(h.slice(2));
   else if (h === "admin") viewAdmin();
   else viewHome();
