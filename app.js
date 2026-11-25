@@ -77,6 +77,7 @@ const LINES = (() => {
 const STATUS_WORD = { pending: "확인 중", approved: "승인", rejected: "다시 올리기" };
 
 const $ = (s, el = document) => el.querySelector(s);
+const okContact = c => /^[0-9+ -]{9,20}$/.test(String(c).trim()) && String(c).replace(/\D/g, "").length >= 9;
 const cssUrl = u => String(u).replace(/['"()\\\s]/g, c => encodeURIComponent(c) === c ? "%" + c.charCodeAt(0).toString(16) : encodeURIComponent(c));
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
@@ -104,7 +105,10 @@ function liveApi() {
       if (error) throw new Error(error.message);
       return data.map(s => ({ ...s, photo_url: sb.storage.from(BUCKET).getPublicUrl(s.photo_path).data.publicUrl }));
     },
-    join: (nick, pass) => rpc("bingo_join", { p_nickname: nick, p_pass: pass }),
+    join: (nick, pass, contact) => rpc("bingo_join", { p_nickname: nick, p_pass: pass, p_contact: contact }),
+    myContact: me => rpc("bingo_my_contact", { p_token: me.token }),
+    setContact: (me, contact) => rpc("bingo_set_contact", { p_token: me.token, p_contact: contact }),
+    itemContact: (me, id) => rpc("bingo_item_contact", { p_token: me.token, p_item: id }),
     async login(nick, pass) {
       const r = await rpc("bingo_login", { p_nickname: nick, p_pass: pass });
       if (!r) throw new Error("닉네임이나 비밀번호가 맞지 않아요.");
@@ -164,12 +168,20 @@ function demoApi() {
   return {
     async listPlayers() { return db.players.map(({ id, nickname, created_at }) => ({ id, nickname, created_at })); },
     async listSubs() { return db.subs.map(s => ({ ...s })); },
-    async join(nick, pass) {
+    async myContact(me) { auth(me); return (db.players.find(p => p.id === me.id) || {}).contact || null; },
+    async setContact(me, contact) { auth(me); if (!okContact(contact)) throw new Error("연락처를 다시 확인해 주세요. 예: 010-1234-5678"); db.players.find(p => p.id === me.id).contact = contact.trim(); save(); },
+    async itemContact(me, id) {
+      const i = db.items.find(i => i.id === id); if (!i || i.status !== "done" || !i.buyer_id) return null;
+      const other = me.id === i.player_id ? i.buyer_id : me.id === i.buyer_id ? i.player_id : null; if (!other) return null;
+      const p = db.players.find(p => p.id === other); return p ? { nickname: p.nickname, contact: p.contact || null } : null;
+    },
+    async join(nick, pass, contact) {
       nick = nick.trim();
+      if (contact && !okContact(contact)) throw new Error("연락처를 다시 확인해 주세요. 예: 010-1234-5678");
       if (nick.length < 1 || nick.length > 12) throw new Error("닉네임은 1~12자로 정해 주세요.");
       if (pass.length < 4) throw new Error("비밀번호는 4자 이상으로 정해 주세요.");
       if (db.players.some(p => p.nickname === nick)) throw new Error('이미 있는 닉네임이에요. 본인이면 "이어서 하기"로 들어오세요.');
-      const p = { id: uid(), nickname: nick, pass, created_at: new Date().toISOString() };
+      const p = { id: uid(), nickname: nick, pass, contact: contact ? contact.trim() : null, created_at: new Date().toISOString() };
       db.players.push(p); save(); return { id: p.id, token: pass };
     },
     async login(nick, pass) {
@@ -238,13 +250,13 @@ const api = LIVE ? liveApi() : demoApi();
 /* ---------- 상태 ---------- */
 const ME_KEY = "stb-bingo-me";
 const state = {
-  players: [], subs: [], items: [], queue: [], cat: "",
+  players: [], subs: [], items: [], queue: [], cat: "", myContact: undefined,
   me: (() => { try { const m = JSON.parse(localStorage.getItem(ME_KEY)); return m && m.token ? m : null; } catch { return null; } })(),
   adminToken: sessionStorage.getItem("stb-bingo-admin") || "",
   adminFilter: "pending",
   drawn: new Set(), // 이미 그어진 줄(다시 그리는 애니메이션 방지)
 };
-const setMe = me => { state.me = me; me ? localStorage.setItem(ME_KEY, JSON.stringify(me)) : localStorage.removeItem(ME_KEY); };
+const setMe = me => { state.me = me; state.myContact = undefined; me ? localStorage.setItem(ME_KEY, JSON.stringify(me)) : localStorage.removeItem(ME_KEY); };
 
 async function refresh() {
   const [players, subs, items, queue] = await Promise.all([api.listPlayers(), api.listSubs(), api.listItems().catch(() => []), api.listQueue().catch(() => [])]);
@@ -272,7 +284,7 @@ async function busy(btn, fn) {
   catch (e) {
     const msg = e.message || "문제가 생겼어요. 잠시 뒤 다시 해 주세요.";
     toast(msg, true);
-    if (msg.startsWith("로그인이 풀렸어요")) { setMe(null); $("#dlg").close(); route(); }
+    if (msg.startsWith("로그인이 풀렸어요")) { setMe(null); $("#dlg").close(); location.hash = "#/"; route(); }
     if (msg.startsWith("운영진 로그인이 풀렸어요")) { state.adminToken = ""; sessionStorage.removeItem("stb-bingo-admin"); $("#dlg").close(); route(); }
   }
   finally { if (btn) btn.disabled = false; }
@@ -280,10 +292,10 @@ async function busy(btn, fn) {
 
 function renderNav() {
   $("#nav").innerHTML = state.me
-    ? `<a href="#/">빙고판</a><a href="#/all">참가자</a><a href="#/dugeun">두근</a><a href="#/admin">운영진</a><button type="button" class="linkish" id="logout">나가기</button>`
-    : `<a href="#/">시작하기</a><a href="#/all">참가자</a><a href="#/dugeun">두근</a><a href="#/admin">운영진</a>`;
+    ? `<a href="#/bingo">빙고</a><a href="#/dugeun">두근</a><a href="#/all">참가자</a><a href="#/admin">운영진</a><button type="button" class="linkish" id="logout">나가기</button>`
+    : `<a href="#/bingo">빙고</a><a href="#/dugeun">두근</a><a href="#/all">참가자</a><a href="#/admin">운영진</a>`;
   const lo = $("#logout");
-  if (lo) lo.onclick = () => { if (confirm("이 기기에서 로그아웃할까요? 기록은 그대로 남아요.")) { api.logout(state.me.token).catch(() => {}); setMe(null); route(); } };
+  if (lo) lo.onclick = () => { if (confirm("이 기기에서 로그아웃할까요? 기록은 그대로 남아요.")) { api.logout(state.me.token).catch(() => {}); setMe(null); location.hash = "#/"; route(); } };
 }
 
 /* ---------- 비밀번호 입력칸 (눈 아이콘으로 보기/가리기) ---------- */
@@ -406,12 +418,99 @@ $("#dlg").addEventListener("click", e => { if (e.target.id === "dlg") e.target.c
 /* ---------- 화면: 시작 / 내 빙고판 ---------- */
 const HOWTO = `
   <ol class="howto">
-    <li><b>닉네임 만들기</b><span>톡방 닉네임과 비밀번호만 정하면 끝.</span></li>
+    <li><b>가입하기</b><span>톡방 닉네임, 비밀번호, 연락처만 적으면 끝.</span></li>
     <li><b>칸을 눌러 인증샷 올리기</b><span>미션을 한 날, 그 칸을 누르고 사진 한 장.</span></li>
     <li><b>승인되면 칸이 채워져요</b><span>가로·세로·대각선 한 줄이 차면 빙고 줄이 그어져요.</span></li>
   </ol>`;
 
+// 첫 화면: 가입(또는 이어서 하기) + 빙고/두근 두 갈래. 두 갈래는 가입 없이도 들어가 볼 수 있다.
+function doorsHtml() {
+  const open = state.items.filter(i => i.status !== "done").length;
+  const mine = state.me ? score(state.me.id) : null;
+  return `<nav class="doors" aria-label="어디로 갈까요">
+    <a class="door" href="#/bingo">
+      <span class="door-art"><span class="mini big" aria-hidden="true">${CELLS.map((_, i) => `<i class="${mine ? (mine.done.has(i) ? "on" : "") : ([0, 6, 12, 18, 24].includes(i) ? "on" : "")}"></i>`).join("")}</span></span>
+      <span class="door-body"><b>미션 빙고</b><span>12월 1일 ~ 31일. 달리고, 찍고, 줄을 그어요.</span>
+      <em>${mine ? `${mine.lines.length}빙고, 채운 칸 ${mine.done.size}/25` : `참가자 ${state.players.length}명`}</em></span>
+    </a>
+    <a class="door" href="#/dugeun">
+      <span class="door-art">${BEAT}</span>
+      <span class="door-body"><b>두근</b><span>서트방 러너들의 장터. 갖고 싶으면 줄부터 서요.</span>
+      <em>거래 중인 물건 ${open}개</em></span>
+    </a>
+  </nav>`;
+}
+
 function viewHome() {
+  const app = $("#app");
+  if (state.me) {
+    app.innerHTML = `
+      <section class="hero">
+        <h1>${esc(state.me.nickname)} 님, 어디로 갈까요</h1>
+      </section>
+      ${doorsHtml()}`;
+    return;
+  }
+  app.innerHTML = `
+    <section class="hero">
+      <h1>12월의 서트방</h1>
+      <p class="lede">미션 빙고와 장터 두근, 닉네임 하나로 같이 써요.</p>
+    </section>
+    <section class="enter" id="enter-box"></section>
+    <h2 class="doors-h">가입 전에 둘러보기</h2>
+    ${doorsHtml()}`;
+  // 닉네임 → 비밀번호 두 단계. 닉네임 칸이 있는 동안에는 비밀번호 칸을 화면에 두지 않는다.
+  // (아이폰은 비밀번호 칸 바로 위 입력칸을 로그인 아이디로 보고 영문 자판만 띄울 수 있다)
+  const box = $("#enter-box");
+  const stepNick = keep => {
+    box.innerHTML = `
+      <div class="enter-step">
+        <label>닉네임<input id="nick-in" lang="ko" inputmode="text" maxlength="12" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next" placeholder="톡방에서 쓰는 이름" value="${esc(keep || "")}"></label>
+        <p class="small">처음이면 가입하고, 가입한 적 있으면 이어서 해요.</p>
+        <button type="button" class="btn" id="nick-go">다음</button>
+      </div>`;
+    const inp = $("#nick-in"), go = $("#nick-go");
+    const next = () => {
+      const nick = inp.value.trim();
+      if (!nick) return toast("닉네임을 입력해 주세요.", true);
+      busy(go, async () => { await refresh(); stepPass(nick, !state.players.some(p => p.nickname === nick)); });
+    };
+    go.onclick = next;
+    inp.onkeydown = e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); next(); } };
+  };
+  const stepPass = (nick, fresh) => {
+    box.innerHTML = `
+      <form id="enter-form" novalidate>
+        <p class="who-line"><b>${esc(nick)}</b> 님, ${fresh ? "처음이네요. 비밀번호와 연락처를 적어 주세요." : "다시 오셨네요. 비밀번호를 넣어 주세요."}</p>
+        <label>비밀번호${pwField("pass", "4자 이상", fresh ? "new-password" : "current-password")}</label>
+        ${fresh ? `<label>비밀번호 한 번 더${pwField("pass2", "같은 비밀번호", "new-password")}</label>
+        <label>연락처<input name="contact" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="010-1234-5678"></label>
+        <p class="small">연락처는 두근에서 거래가 성사된 상대에게만 보여요. 비밀번호는 잊어버리면 운영진도 찾아 줄 수 없어요.</p>` : ""}
+        <button class="btn" id="enter-go">${fresh ? "가입하기" : "들어가기"}</button>
+        <button type="button" class="linkish" id="nick-back">닉네임 다시 적기</button>
+      </form>`;
+    bindPw(box);
+    const f = $("#enter-form");
+    $("#nick-back").onclick = () => stepNick(nick);
+    f.pass.focus();
+    f.onsubmit = e => {
+      e.preventDefault();
+      const pass = f.pass.value;
+      if (pass.length < 4) return toast("비밀번호는 4자 이상으로 정해 주세요.", true);
+      if (fresh && f.pass2.value !== pass) { f.pass2.focus(); return toast(f.pass2.value ? "비밀번호 두 개가 서로 달라요." : "비밀번호를 한 번 더 입력해 주세요.", true); }
+      if (fresh && !okContact(f.contact.value)) { f.contact.focus(); return toast(f.contact.value.trim() ? "연락처를 다시 확인해 주세요. 예: 010-1234-5678" : "연락처를 적어 주세요.", true); }
+      busy($("#enter-go"), async () => {
+        const r = await (fresh ? api.join(nick, pass, f.contact.value.trim()) : api.login(nick, pass));
+        setMe({ id: r.id, nickname: nick, token: r.token });
+        await refresh(); route();
+        if (fresh) toast("가입됐어요. 어디로 갈지 골라 보세요.");
+      });
+    };
+  };
+  stepNick();
+}
+
+function viewBingo() {
   const app = $("#app");
   if (state.me) {
     app.innerHTML = `
@@ -433,59 +532,12 @@ function viewHome() {
       <p class="lede">달리고, 찍고, 줄을 그어요.</p>
     </section>
     ${HOWTO}
-    <section class="enter" id="enter-box"></section>
+    <p class="cta"><a class="btn" href="#/">가입하고 시작하기</a></p>
     <section>
       <h2>빙고판 미리 보기</h2>
       <div class="board"><div class="grid">${CELLS.map(([t, s], i) => `<div class="cell is-empty">${icon(i)}<span class="cell-title">${esc(t)}</span>${s ? `<span class="cell-sub">${esc(s)}</span>` : ""}</div>`).join("")}</div></div>
     </section>
     ${rankingHtml()}`;
-  // 닉네임 → 비밀번호 두 단계. 닉네임 칸이 있는 동안에는 비밀번호 칸을 화면에 두지 않는다.
-  // (아이폰은 비밀번호 칸 바로 위 입력칸을 로그인 아이디로 보고 영문 자판만 띄울 수 있다)
-  const box = $("#enter-box");
-  const stepNick = keep => {
-    box.innerHTML = `
-      <div class="enter-step">
-        <label>닉네임<input id="nick-in" lang="ko" inputmode="text" maxlength="12" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next" placeholder="톡방에서 쓰는 이름" value="${esc(keep || "")}"></label>
-        <p class="small">처음이면 새로 만들고, 만든 적 있으면 이어서 해요.</p>
-        <button type="button" class="btn" id="nick-go">다음</button>
-      </div>`;
-    const inp = $("#nick-in"), go = $("#nick-go");
-    const next = () => {
-      const nick = inp.value.trim();
-      if (!nick) return toast("닉네임을 입력해 주세요.", true);
-      busy(go, async () => { await refresh(); stepPass(nick, !state.players.some(p => p.nickname === nick)); });
-    };
-    go.onclick = next;
-    inp.onkeydown = e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); next(); } };
-  };
-  const stepPass = (nick, fresh) => {
-    box.innerHTML = `
-      <form id="enter-form" novalidate>
-        <p class="who-line"><b>${esc(nick)}</b> 님, ${fresh ? "처음이네요. 비밀번호를 정해 주세요." : "다시 오셨네요. 비밀번호를 넣어 주세요."}</p>
-        <label>비밀번호${pwField("pass", "4자 이상", fresh ? "new-password" : "current-password")}</label>
-        ${fresh ? `<label>비밀번호 한 번 더${pwField("pass2", "같은 비밀번호", "new-password")}</label>
-        <p class="small">비밀번호는 다른 기기에서 이어서 할 때 써요. 잊어버리면 운영진도 찾아 줄 수 없어요.</p>` : ""}
-        <button class="btn" id="enter-go">${fresh ? "빙고판 만들기" : "내 빙고판 열기"}</button>
-        <button type="button" class="linkish" id="nick-back">닉네임 다시 적기</button>
-      </form>`;
-    bindPw(box);
-    const f = $("#enter-form");
-    $("#nick-back").onclick = () => stepNick(nick);
-    f.pass.focus();
-    f.onsubmit = e => {
-      e.preventDefault();
-      const pass = f.pass.value;
-      if (pass.length < 4) return toast("비밀번호는 4자 이상으로 정해 주세요.", true);
-      if (fresh && f.pass2.value !== pass) { f.pass2.focus(); return toast(f.pass2.value ? "비밀번호 두 개가 서로 달라요." : "비밀번호를 한 번 더 입력해 주세요.", true); }
-      busy($("#enter-go"), async () => {
-        const r = await (fresh ? api.join(nick, pass) : api.login(nick, pass));
-        setMe({ id: r.id, nickname: nick, token: r.token });
-        await refresh(); route();
-        if (fresh) toast("빙고판이 만들어졌어요. 칸을 눌러 인증샷을 올려 보세요.");
-      });
-    };
-  };
-  stepNick();
 }
 
 /* ---------- 화면: 참가자 ---------- */
@@ -528,7 +580,7 @@ function viewAll() {
   $("#app").innerHTML = `
     <h1>참가자 ${rows.length}명</h1>
     ${rows.length ? rosterHtml(rows)
-    : `<p class="empty">아직 참가자가 없어요. <a href="#/">첫 번째로 빙고판을 만들어 보세요.</a></p>`}`;
+    : `<p class="empty">아직 참가자가 없어요. <a href="#/">첫 번째로 가입해 보세요.</a></p>`}`;
 }
 
 function viewUser(pid) {
@@ -625,7 +677,7 @@ const BEAT = '<svg class="beat" viewBox="0 0 40 36" aria-hidden="true"><path cla
 const PIN = '<svg class="pin" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.500S3.500 10 3.500 6.500a4.500 4.500 0 019 0C12.500 10 8 14.500 8 14.500z"/><circle cx="8" cy="6.500" r="1.500"/></svg>'.replace(/\.500/g, ".5");
 // 달리는 사람 픽토그램 (줄 앞쪽인 왼쪽을 보고 달림)
 const RUNNER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><g transform="translate(32 0) scale(-1 1)"><circle cx="20.500" cy="5.500" r="3.800"/><path d="M18 11.500L14 21M18 12l5.500 3 3-3.500M17 12.500l-5.500.500-2.500 4M14 21l6.500 3-1 8M14 21l-4.500 5.500H3.500"/></g></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
-const needLogin = () => { toast("먼저 빙고판을 만들어 주세요. 같은 닉네임으로 두근도 써요.", true); location.hash = "#/"; };
+const needLogin = () => { toast("먼저 가입해 주세요. 가입하면 빙고와 두근을 같이 써요.", true); location.hash = "#/"; };
 
 function tokensHtml(q, max) {
   return q.slice(0, max).map(x => `<i class="tok-s${state.me && x.player_id === state.me.id ? " me" : ""}">${RUNNER}</i>`).join("") +
@@ -646,6 +698,7 @@ function viewDugeun() {
       </div>
       <button type="button" class="btn" id="dg-new">물건 올리기</button>
     </section>
+    ${state.me ? `<p class="contact-line" id="contact-line"></p>` : ""}
     <div class="chips" role="tablist" aria-label="카테고리">
       <button type="button" role="tab" data-cat="" aria-selected="${!cat}">전체 ${all.length}</button>
       ${CATS.map(c => `<button type="button" role="tab" data-cat="${esc(c)}" aria-selected="${cat === c}">${esc(c)} ${count(c)}</button>`).join("")}
@@ -664,9 +717,38 @@ function viewDugeun() {
   app.querySelectorAll("[data-cat]").forEach(b => (b.onclick = () => { state.cat = b.dataset.cat; viewDugeun(); }));
   app.querySelectorAll("[data-item]").forEach(b => (b.onclick = () => openItem(b.dataset.item)));
   $("#dg-new").onclick = () => (state.me ? openItemForm() : needLogin());
+  if (state.me) showContactLine();
 }
 
 const topOffer = q => q.reduce((m, x) => (x.offer != null && x.offer > m ? x.offer : m), -1);
+
+async function showContactLine() {
+  if (state.myContact === undefined) state.myContact = await api.myContact(state.me).catch(() => undefined);
+  const el = $("#contact-line"); if (!el || state.myContact === undefined) return;
+  el.innerHTML = state.myContact
+    ? `내 연락처 ${esc(state.myContact)} <button type="button" class="linkish" id="contact-edit">바꾸기</button>`
+    : `연락처가 아직 없어요. 거래가 성사되면 상대에게만 보여요. <button type="button" class="linkish" id="contact-edit">연락처 등록</button>`;
+  $("#contact-edit").onclick = openContactForm;
+}
+
+function openContactForm() {
+  const dlg = $("#dlg");
+  dlg.innerHTML = `
+    <form class="sheet" id="contact-form" novalidate>
+      <button type="button" class="close" id="it-close">닫기</button>
+      <h2>내 연락처</h2>
+      <label class="field">연락처<input name="contact" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="010-1234-5678" value="${esc(state.myContact || "")}"></label>
+      <p class="small">두근에서 거래가 성사된 상대에게만 보여요.</p>
+      <button class="btn" id="contact-go">저장</button>
+    </form>`;
+  $("#it-close").onclick = () => dlg.close();
+  $("#contact-form").onsubmit = e => {
+    e.preventDefault(); const v = e.target.contact.value.trim();
+    if (!okContact(v)) return toast(v ? "연락처를 다시 확인해 주세요. 예: 010-1234-5678" : "연락처를 적어 주세요.", true);
+    busy($("#contact-go"), async () => { await api.setContact(state.me, v); state.myContact = v; dlg.close(); showContactLine(); toast("연락처를 저장했어요."); });
+  };
+  dlg.showModal();
+}
 
 // 줄 그림: 트랙 위에 선 순서대로 달리는 사람. 말풍선은 각자 적은 제시 가격.
 // 올린 사람에게는 각 러너가 버튼이 되어, 눌러서 팔 사람을 고른다.
@@ -714,6 +796,7 @@ function openItem(id, picked) {
       <h3>줄 서기</h3>
       ${laneHtml(item, q, picked)}
       <p class="note">${esc(line)}</p>
+      ${state.me && item.status === "done" && item.buyer_id && (mine || item.buyer_id === state.me.id) ? `<p class="deal" id="deal-contact">연락처를 불러오는 중…</p>` : ""}
       ${!mine && item.status !== "done" ? `
         <label class="field">${pos >= 0 ? "내 말풍선 가격" : "말풍선에 적을 가격"}<span class="price-in"><input id="q-offer" inputmode="numeric" maxlength="11" autocomplete="off" placeholder="안 적어도 돼요" value="${pos >= 0 && q[pos].offer != null ? q[pos].offer.toLocaleString("ko-KR") : ""}"><span>원</span></span></label>
         <button type="button" class="btn" id="q-join2">${pos >= 0 ? "가격 바꾸기" : "줄 서기"}</button>` : ""}
@@ -735,6 +818,12 @@ function openItem(id, picked) {
   const leave = $("#q-leave", dlg);
   if (leave) leave.onclick = () => busy(leave, async () => { await api.queueLeave(state.me, id); await again(); toast("줄에서 나왔어요."); });
   dlg.querySelectorAll("[data-st]").forEach(b => (b.onclick = () => busy(b, async () => { await api.itemStatus(state.me, id, b.dataset.st); await again(); })));
+  const deal = $("#deal-contact", dlg);
+  if (deal) api.itemContact(state.me, id).then(c => {
+    if (!deal.isConnected) return;
+    deal.innerHTML = c && c.contact ? `${mine ? "구매자" : "판매자"} ${esc(c.nickname)} 님 연락처 <a href="tel:${esc(c.contact.replace(/[^0-9+]/g, ""))}">${esc(c.contact)}</a>`
+      : c ? `${esc(c.nickname)} 님은 아직 연락처를 등록하지 않았어요. 톡방에서 연락해 주세요.` : "";
+  }).catch(() => { deal.textContent = "연락처를 불러오지 못했어요."; });
   dlg.querySelectorAll("[data-pick]").forEach(b => (b.onclick = () => openItem(id, picked === b.dataset.pick ? null : b.dataset.pick)));
   const sell = $("#it-sell", dlg);
   if (sell && picked) sell.onclick = () => busy(sell, async () => { await api.itemSell(state.me, id, picked); await again(); toast(`${nickOf(picked)} 님에게 판매 완료했어요.`); });
@@ -795,6 +884,7 @@ function route() {
   const h = location.hash.replace(/^#\/?/, "");
   document.body.classList.toggle("demo", !LIVE);
   if (h === "all") viewAll();
+  else if (h === "bingo") viewBingo();
   else if (h === "dugeun") viewDugeun();
   else if (h.startsWith("u/")) viewUser(h.slice(2));
   else if (h === "admin") viewAdmin();

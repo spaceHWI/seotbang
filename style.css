@@ -371,3 +371,26 @@ textarea { resize: vertical; }
 .enter-step { display: grid; gap: .75rem; }
 .who-line { margin: 0; overflow-wrap: anywhere; }
 .enter .linkish { justify-self: center; color: var(--ink); }
+
+/* 첫 화면: 빙고/두근 두 갈래 */
+.doors-h { margin-top: 2rem; }
+.doors { display: grid; gap: .625rem; margin-top: 1.25rem; }
+.doors-h + .doors { margin-top: 0; }
+@media (min-width: 36rem) { .doors { grid-template-columns: 1fr 1fr; } }
+.door { display: grid; grid-template-columns: auto 1fr; gap: .875rem; align-items: center; padding: 1rem; border-radius: 4px; background: var(--cream); color: var(--ink); text-decoration: none; }
+.door:hover { background: #ffe9bf; }
+.door-art { display: grid; place-items: center; width: 4.25rem; height: 4.25rem; border-radius: 4px; background: var(--forest); }
+.door-art .beat { width: 2.75rem; }
+.door-art .beat-heart { stroke: var(--peach); }
+.mini.big { grid-template-columns: repeat(5, 9px); gap: 2px; }
+.mini.big i { width: 9px; height: 9px; }
+.door-body { display: grid; gap: .15rem; min-width: 0; }
+.door-body b { font: 400 1.375rem/1.2 var(--display); color: var(--track-deep); }
+.door-body span { font-size: .875rem; line-height: 1.4; }
+.door-body em { font-style: normal; font-weight: 700; font-size: .8125rem; margin-top: .15rem; }
+.cta { margin: 1.25rem 0 0; text-align: center; }
+.cta .btn { display: inline-block; text-decoration: none; }
+.contact-line { margin: 1rem 0 0; font-size: .875rem; }
+.deal { padding: .625rem .75rem; border-radius: 4px; background: var(--forest); color: var(--cream); font-weight: 600; }
+.deal a { color: var(--sun); }
+.deal:empty { display: none; }

@@ -119,9 +119,25 @@ revoke execute on function
 from public, anon, authenticated;
 
 -- 3) 참가자용 함수 ----------------------------------------------------
-create or replace function public.bingo_join(p_nickname text, p_pass text)
+-- 연락처는 공개 읽기 권한에 넣지 않는다(거래가 성사된 상대에게만 함수로 보여 줌).
+alter table public.bingo_players add column if not exists contact text check (contact is null or char_length(contact) between 9 and 20);
+
+create or replace function public.bingo__contact(p_contact text)
+returns text language plpgsql immutable set search_path = public as $$
+declare v text := btrim(coalesce(p_contact, ''));
+begin
+  if v = '' then return null; end if;
+  if v !~ '^[0-9+ -]{9,20}$' or char_length(regexp_replace(v, '[^0-9]', '', 'g')) < 9 then
+    raise exception '연락처를 다시 확인해 주세요. 예: 010-1234-5678';
+  end if;
+  return v;
+end $$;
+revoke execute on function public.bingo__contact(text) from public, anon, authenticated;
+
+drop function if exists public.bingo_join(text, text);
+create or replace function public.bingo_join(p_nickname text, p_pass text, p_contact text default null)
 returns json language plpgsql security definer set search_path = public, extensions as $$
-declare v_id uuid; v_nick text := btrim(p_nickname);
+declare v_id uuid; v_nick text := btrim(p_nickname); v_contact text := bingo__contact(p_contact);
 begin
   if char_length(v_nick) < 1 or char_length(v_nick) > 12 then
     raise exception '닉네임은 1~12자로 정해 주세요.';
@@ -135,8 +151,8 @@ begin
   if exists (select 1 from bingo_players where nickname = v_nick) then
     raise exception '이미 있는 닉네임이에요. 본인이면 "이어서 하기"로 들어오세요.';
   end if;
-  insert into bingo_players (nickname, pass_hash)
-  values (v_nick, crypt(p_pass, gen_salt('bf', 10)))
+  insert into bingo_players (nickname, pass_hash, contact)
+  values (v_nick, crypt(p_pass, gen_salt('bf', 10)), v_contact)
   returning id into v_id;
   perform bingo__note('join', bingo__ip());
   return json_build_object('id', v_id, 'token', bingo__new_session(v_id, interval '60 days'));
@@ -157,6 +173,20 @@ begin
     return null;
   end if;
   return json_build_object('id', v_id, 'token', bingo__new_session(v_id, interval '60 days'));
+end $$;
+
+create or replace function public.bingo_my_contact(p_token text)
+returns text language sql security definer set search_path = public, extensions as $$
+  select contact from bingo_players where id = bingo__player(p_token);
+$$;
+
+create or replace function public.bingo_set_contact(p_token text, p_contact text)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+declare v_player uuid := bingo__player(p_token); v_contact text := bingo__contact(p_contact);
+begin
+  if v_player is null then raise exception '로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
+  if v_contact is null then raise exception '연락처를 적어 주세요.'; end if;
+  update bingo_players set contact = v_contact where id = v_player;
 end $$;
 
 create or replace function public.bingo_logout(p_token text)
@@ -247,7 +277,9 @@ begin
 end $$;
 
 grant execute on function
-  public.bingo_join(text, text),
+  public.bingo_join(text, text, text),
+  public.bingo_my_contact(text),
+  public.bingo_set_contact(text, text),
   public.bingo_login(text, text),
   public.bingo_logout(text),
   public.bingo_submit(text, int, text),
@@ -369,6 +401,20 @@ begin
   update bingo_items set status = 'done', buyer_id = p_buyer where id = p_item;
 end $$;
 
+-- 판매 완료된 물건에서, 올린 사람은 구매자 연락처를, 구매자는 올린 사람 연락처를 본다. 그 밖에는 null.
+create or replace function public.bingo_item_contact(p_token text, p_item uuid)
+returns json language plpgsql security definer set search_path = public, extensions as $$
+declare v_player uuid := bingo__player(p_token); v_owner uuid; v_buyer uuid; v_status text; v_other uuid;
+begin
+  if v_player is null then return null; end if;
+  select player_id, buyer_id, status into v_owner, v_buyer, v_status from bingo_items where id = p_item;
+  if v_status is distinct from 'done' or v_buyer is null then return null; end if;
+  if v_player = v_owner then v_other := v_buyer;
+  elsif v_player = v_buyer then v_other := v_owner;
+  else return null; end if;
+  return (select json_build_object('nickname', nickname, 'contact', contact) from bingo_players where id = v_other);
+end $$;
+
 -- 올린 사람 또는 운영진이 지울 수 있음
 create or replace function public.bingo_item_delete(p_token text, p_item uuid)
 returns void language plpgsql security definer set search_path = public, extensions as $$
@@ -414,6 +460,7 @@ grant execute on function
   public.bingo_item_post(text, text, text, text, int, text, text),
   public.bingo_item_status(text, uuid, text),
   public.bingo_item_sell(text, uuid, uuid),
+  public.bingo_item_contact(text, uuid),
   public.bingo_item_delete(text, uuid),
   public.bingo_item_queue_join(text, uuid, int),
   public.bingo_item_queue_leave(text, uuid)
