@@ -376,7 +376,7 @@ create table if not exists public.bingo_items (
   title text not null check (char_length(title) between 1 and 40),
   category text not null check (category in ('운동화','운동복','가방·조끼','장비·용품','시계·전자기기','보급·영양','기타')),
   description text not null default '' check (char_length(description) <= 500),
-  price integer not null check (price between 0 and 100000000),
+  price integer not null check (price between 0 and 1000000000),
   pickup text not null check (char_length(pickup) between 1 and 60),
   photo_path text not null,
   status text not null default 'open' check (status in ('open','reserved','done')),
@@ -420,7 +420,7 @@ begin
   if coalesce(p_mode, 'queue') not in ('queue', 'auction') then raise exception '파는 방식을 골라 주세요.'; end if;
   if char_length(coalesce(p_description, '')) > 500 then raise exception '설명은 500자까지 적을 수 있어요.'; end if;
   if p_price is null or p_price < 0 then raise exception '가격을 다시 확인해 주세요.'; end if;
-  if p_price > 100000000 then raise exception '가격은 1억 원까지 적을 수 있어요.'; end if;
+  if p_price > 1000000000 then raise exception '가격은 10억 원까지 적을 수 있어요.'; end if;
   if char_length(btrim(coalesce(p_pickup, ''))) not between 1 and 60 then raise exception '수령처는 1~60자로 적어 주세요.'; end if;
   if p_path !~ ('^' || v_player::text || '/90-[0-9]{10,16}\.jpg$') then raise exception '사진 경로가 맞지 않아요.'; end if;
   if (select count(*) from bingo_items where player_id = v_player and status <> 'done') >= 20 then
@@ -489,7 +489,12 @@ begin
 end $$;
 
 -- 줄 서기. p_offer 는 말풍선에 적는 제시 가격(없어도 됨). 이미 줄에 있으면 가격만 바뀌고 순서는 그대로.
-alter table public.bingo_item_queue add column if not exists offer integer check (offer is null or offer between 0 and 100000000);
+alter table public.bingo_item_queue add column if not exists offer integer check (offer is null or offer between 0 and 1000000000);
+-- 가격 상한 10억
+alter table public.bingo_items drop constraint if exists bingo_items_price_check;
+alter table public.bingo_items add constraint bingo_items_price_check check (price between 0 and 1000000000);
+alter table public.bingo_item_queue drop constraint if exists bingo_item_queue_offer_check;
+alter table public.bingo_item_queue add constraint bingo_item_queue_offer_check check (offer is null or offer between 0 and 1000000000);
 drop function if exists public.bingo_item_queue_join(text, uuid);
 create or replace function public.bingo_item_queue_join(p_token text, p_item uuid, p_offer int default null)
 returns void language plpgsql security definer set search_path = public, extensions as $$
@@ -501,7 +506,7 @@ begin
   if v_owner = v_player then raise exception '내가 올린 물건에는 줄을 설 수 없어요.'; end if;
   if v_status = 'done' then raise exception '거래가 끝난 물건이에요.'; end if;
   if p_offer is not null and p_offer < 0 then raise exception '가격을 다시 확인해 주세요.'; end if;
-  if p_offer is not null and p_offer > 100000000 then raise exception '가격은 1억 원까지 부를 수 있어요.'; end if;
+  if p_offer is not null and p_offer > 1000000000 then raise exception '가격은 10억 원까지 부를 수 있어요.'; end if;
   if v_mode = 'auction' then
     if p_offer is null then raise exception '부를 가격을 적어 주세요.'; end if;
     if p_offer < v_price then raise exception '시작 가격 이상으로 불러 주세요.'; end if;
