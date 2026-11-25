@@ -395,3 +395,38 @@ textarea { resize: vertical; }
 .deal { padding: .625rem .75rem; border-radius: 4px; background: var(--forest); color: var(--cream); font-weight: 600; }
 .deal a { color: var(--sun); }
 .deal:empty { display: none; }
+
+/* 운영진: 가입자 관리 */
+.seg.dark { margin: 0 0 1rem; }
+.seg.dark button { border-color: var(--cream); color: var(--cream); }
+.seg.dark button[aria-pressed=true] { background: var(--cream); color: var(--ink); }
+.adm-note { margin: 0 0 .75rem; }
+.members { list-style: none; margin: 0; padding: 0; display: grid; gap: .375rem; }
+.members li { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .625rem .75rem; border-radius: 4px; background: var(--cream); color: var(--ink); }
+.members li div { display: grid; min-width: 0; }
+.members b { overflow-wrap: anywhere; }
+.members span { font-size: .8125rem; line-height: 1.4; }
+.small-btn { flex: none; padding: .45rem .9rem; font-size: .9375rem; }
+.danger { margin-top: 2.5rem; padding: .75rem; border: 2px dashed var(--peach); border-radius: 4px; }
+.danger summary { cursor: pointer; font-weight: 700; }
+.danger-row { display: grid; gap: .5rem; margin-top: .75rem; }
+.danger .btn.ghost { color: var(--cream); box-shadow: inset 0 0 0 2px var(--cream); }
+.dz-list { margin: 0; padding-left: 1.1rem; display: grid; gap: .2rem; }
+.dz-phrase { padding: .05rem .35rem; border-radius: 3px; background: var(--sun); }
+.btn.danger-go { background: #a32a00; }
+
+/* 파는 방식: 줄 세우기 / 경매 */
+.modes { margin: 0; padding: 0; border: 0; display: grid; gap: .375rem; }
+.modes legend { padding: 0; margin-bottom: .25rem; font-weight: 600; font-size: .9375rem; }
+.mode-opt { display: flex; align-items: flex-start; gap: .5rem; padding: .625rem .75rem; border: 2px solid var(--forest); border-radius: 4px; cursor: pointer; }
+.mode-opt:has(input:checked) { background: var(--forest); color: var(--cream); }
+.mode-opt input { margin-top: .25rem; accent-color: var(--sun); }
+.mode-opt span { display: grid; font-size: .875rem; line-height: 1.4; }
+.mode-opt b { font-size: 1rem; }
+.badge.mode { left: auto; right: .375rem; background: var(--track-deep); color: #fff; }
+.tagc.mode-auction { background: var(--track-deep); border-color: var(--track-deep); color: #fff; }
+.item-price small, .it-price small { font: 600 .75rem var(--body); color: var(--ink); }
+.lane.auction .tok em { font-size: .875rem; }
+.mode-opt input { width: auto; flex: none; padding: 0; border: 0; margin: .3rem 0 0; }
+.mode-opt span { flex: 1; }
+.dz-phrase { display: inline; }

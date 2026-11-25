@@ -130,7 +130,7 @@ function liveApi() {
     cancel: (me, cell) => rpc("bingo_cancel", { p_token: me.token, p_cell: cell }),
     async listItems() {
       const { data, error } = await sb.from("bingo_items")
-        .select("id,player_id,title,category,description,price,pickup,photo_path,status,buyer_id,created_at").order("created_at", { ascending: false });
+        .select("*").order("created_at", { ascending: false });
       if (error) throw new Error(error.message);
       return data.map(i => ({ ...i, photo_url: sb.storage.from(BUCKET).getPublicUrl(i.photo_path).data.publicUrl }));
     },
@@ -143,7 +143,7 @@ function liveApi() {
       const path = `${me.id}/90-${Date.now()}.jpg`;
       const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: "image/jpeg", headers: { "x-bingo-token": me.token } });
       if (up.error) throw new Error("사진을 올리지 못했어요. " + up.error.message);
-      return rpc("bingo_item_post", { p_token: me.token, p_title: d.title, p_category: d.category, p_description: d.description, p_price: d.price, p_pickup: d.pickup, p_path: path });
+      return rpc("bingo_item_post", { p_token: me.token, p_title: d.title, p_category: d.category, p_description: d.description, p_price: d.price, p_pickup: d.pickup, p_path: path, p_mode: d.mode });
     },
     itemStatus: (me, id, status) => rpc("bingo_item_status", { p_token: me.token, p_item: id, p_status: status }),
     itemSell: (me, id, buyer) => rpc("bingo_item_sell", { p_token: me.token, p_item: id, p_buyer: buyer }),
@@ -158,6 +158,12 @@ function liveApi() {
       return t;
     },
     adminCheck: token => rpc("bingo_admin_check", { p_token: token }),
+    async adminDeletePlayer(token, pass, id) {
+      if ((await rpc("bingo_admin_delete_player", { p_token: token, p_pass: pass, p_player: id })) !== "ok") throw new Error("운영진 비밀번호가 맞지 않아요.");
+    },
+    async adminReset(token, pass, scope) {
+      if ((await rpc("bingo_admin_reset", { p_token: token, p_pass: pass, p_scope: scope })) !== "ok") throw new Error("운영진 비밀번호가 맞지 않아요.");
+    },
     review: (token, id, status, reason) =>
       rpc("bingo_review", { p_token: token, p_submission: id, p_status: status, p_reason: reason || null }),
   };
@@ -230,6 +236,8 @@ function demoApi() {
       if (!i) throw new Error("없는 물건이에요.");
       if (i.player_id === me.id) throw new Error("내가 올린 물건에는 줄을 설 수 없어요.");
       if (i.status === "done") throw new Error("거래가 끝난 물건이에요.");
+      if (i.mode === "auction" && (offer == null || offer < i.price)) throw new Error("시작 가격 이상으로 불러 주세요.");
+      if (i.mode !== "auction") offer = null;
       const mine = db.queue.find(q => q.item_id === id && q.player_id === me.id);
       if (mine) mine.offer = offer; else db.queue.push({ item_id: id, player_id: me.id, offer, created_at: new Date().toISOString() });
       save();
@@ -243,6 +251,22 @@ function demoApi() {
     },
     async adminLogin(pass) { if (db.admin !== pass) throw new Error("운영진 비밀번호가 맞지 않아요."); return pass; },
     async adminCheck(token) { return !!db.admin && db.admin === token; },
+    async adminDeletePlayer(token, pass, id) {
+      if (db.admin !== token) throw new Error("운영진 로그인이 풀렸어요. 다시 들어와 주세요.");
+      if (db.admin !== pass) throw new Error("운영진 비밀번호가 맞지 않아요.");
+      const items = db.items.filter(i => i.player_id === id).map(i => i.id);
+      db.players = db.players.filter(p => p.id !== id); db.subs = db.subs.filter(s => s.player_id !== id);
+      db.items = db.items.filter(i => i.player_id !== id); db.queue = db.queue.filter(q => q.player_id !== id && !items.includes(q.item_id));
+      db.items.forEach(i => { if (i.buyer_id === id) i.buyer_id = null; }); save();
+    },
+    async adminReset(token, pass, scope) {
+      if (db.admin !== token) throw new Error("운영진 로그인이 풀렸어요. 다시 들어와 주세요.");
+      if (db.admin !== pass) throw new Error("운영진 비밀번호가 맞지 않아요.");
+      if (scope === "bingo" || scope === "all") db.subs = [];
+      if (scope === "dugeun" || scope === "all") { db.items = []; db.queue = []; }
+      if (scope === "all") db.players = [];
+      save();
+    },
     async review(pass, id, status, reason) {
       if (db.admin !== pass) throw new Error("운영진 로그인이 풀렸어요. 다시 들어와 주세요.");
       const s = db.subs.find(s => s.id === id); if (!s) return;
@@ -259,7 +283,7 @@ const state = {
   players: [], subs: [], items: [], queue: [], cat: "", myContact: undefined,
   me: (() => { try { const m = JSON.parse(localStorage.getItem(ME_KEY)); return m && m.token ? m : null; } catch { return null; } })(),
   adminToken: sessionStorage.getItem("stb-bingo-admin") || "",
-  adminFilter: "pending",
+  adminFilter: "pending", adminTab: "review",
   drawn: new Set(), // 이미 그어진 줄(다시 그리는 애니메이션 방지)
 };
 const setMe = me => { state.me = me; state.myContact = undefined; me ? localStorage.setItem(ME_KEY, JSON.stringify(me)) : localStorage.removeItem(ME_KEY); };
@@ -630,8 +654,18 @@ async function viewAdmin() {
   const list = state.subs.filter(s => s.status === state.adminFilter)
     .sort((a, b) => a.created_at < b.created_at ? -1 : 1);
   const emptyMsg = { pending: "확인할 인증샷이 없어요.", approved: "승인한 인증샷이 없어요.", rejected: "반려한 인증샷이 없어요." }[state.adminFilter];
-  app.innerHTML = `
-    <section class="mine-head"><h1>운영진 확인 화면</h1><button type="button" class="linkish" id="admin-out">운영진 나가기</button></section>
+  const head = `
+    <section class="mine-head"><h1>운영진 화면</h1><button type="button" class="linkish" id="admin-out">운영진 나가기</button></section>
+    <div class="seg dark" role="tablist" aria-label="운영진 메뉴">
+      <button type="button" role="tab" data-tab="review" aria-pressed="${state.adminTab === "review"}">인증샷 확인</button>
+      <button type="button" role="tab" data-tab="members" aria-pressed="${state.adminTab === "members"}">가입자 관리</button>
+    </div>`;
+  const bindHead = () => {
+    $("#admin-out").onclick = () => { api.logout(state.adminToken).catch(() => {}); state.adminToken = ""; sessionStorage.removeItem("stb-bingo-admin"); location.hash = "#/"; };
+    app.querySelectorAll("[data-tab]").forEach(b => (b.onclick = () => { state.adminTab = b.dataset.tab; viewAdmin(); }));
+  };
+  if (state.adminTab === "members") { app.innerHTML = head + membersHtml(); bindHead(); bindMembers(app); return; }
+  app.innerHTML = `${head}
     <div class="tabs" role="tablist">
       ${["pending", "approved", "rejected"].map(st => `<button type="button" role="tab" data-f="${st}" aria-selected="${state.adminFilter === st}">${{ pending: "확인할 것", approved: "승인함", rejected: "반려함" }[st]} ${count(st)}</button>`).join("")}
     </div>
@@ -649,7 +683,7 @@ async function viewAdmin() {
           </div>
         </div>
       </li>`).join("")}</ul>` : `<p class="empty">${emptyMsg}</p>`}`;
-  $("#admin-out").onclick = () => { api.logout(state.adminToken).catch(() => {}); state.adminToken = ""; sessionStorage.removeItem("stb-bingo-admin"); location.hash = "#/"; };
+  bindHead();
   app.querySelectorAll("[data-f]").forEach(b => (b.onclick = () => { state.adminFilter = b.dataset.f; viewAdmin(); }));
   app.querySelectorAll("[data-act]").forEach(b => (b.onclick = () => {
     const id = b.closest("li").dataset.id, act = b.dataset.act;
@@ -673,6 +707,106 @@ async function viewAdmin() {
   }));
 }
 
+/* ---------- 운영진: 가입자 관리 (삭제·초기화는 단계를 나눠 확인) ---------- */
+const footprint = pid => ({
+  subs: state.subs.filter(s => s.player_id === pid).length,
+  items: state.items.filter(i => i.player_id === pid).length,
+  queues: state.queue.filter(q => q.player_id === pid).length,
+});
+
+function membersHtml() {
+  const rows = [...state.players].sort((a, b) => a.nickname.localeCompare(b.nickname, "ko"));
+  return `
+    <p class="small adm-note">가입자 ${rows.length}명. 삭제하면 그 사람의 인증샷, 두근 물건, 줄 선 기록이 함께 지워지고 되돌릴 수 없어요.</p>
+    ${rows.length ? `<ul class="members">${rows.map(p => { const f = footprint(p.id); return `
+      <li>
+        <div><b>${esc(p.nickname)}</b><span>${new Date(p.created_at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })} 가입, 인증샷 ${f.subs}건, 물건 ${f.items}개, 줄 ${f.queues}곳</span></div>
+        <button type="button" class="btn ghost small-btn" data-del="${esc(p.id)}">삭제</button>
+      </li>`; }).join("")}</ul>` : `<p class="empty">가입자가 없어요.</p>`}
+    <details class="danger">
+      <summary>초기화 열기</summary>
+      <p class="small">테스트 기록을 비울 때만 쓰세요. 지운 기록은 되돌릴 수 없어요.</p>
+      <div class="danger-row">
+        <button type="button" class="btn ghost" data-reset="bingo">인증샷 전체 지우기</button>
+        <button type="button" class="btn ghost" data-reset="dugeun">두근 물건 전체 지우기</button>
+        <button type="button" class="btn ghost" data-reset="all">가입자까지 전부 지우기</button>
+      </div>
+    </details>`;
+}
+
+// 확인 창 공통: 1단계 내용 확인 → 2단계 확인 문구를 직접 입력 + 운영진 비밀번호 다시 입력
+function openDanger({ title, lines, phrase, action, doneMsg }) {
+  const dlg = $("#dlg");
+  const step1 = () => {
+    dlg.innerHTML = `
+      <div class="sheet">
+        <button type="button" class="close" id="dz-close">닫기</button>
+        <h2>${esc(title)}</h2>
+        <ul class="dz-list">${lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>
+        <p class="note is-rejected">되돌릴 수 없어요.</p>
+        <button type="button" class="btn" id="dz-next">내용을 확인했어요</button>
+        <button type="button" class="linkish" id="dz-cancel">그만두기</button>
+      </div>`;
+    $("#dz-close").onclick = $("#dz-cancel").onclick = () => dlg.close();
+    $("#dz-next").onclick = step2;
+  };
+  const step2 = () => {
+    dlg.innerHTML = `
+      <form class="sheet" id="dz-form" novalidate>
+        <button type="button" class="close" id="dz-close">닫기</button>
+        <h2>${esc(title)}</h2>
+        <label class="field"><span>확인을 위해 <b class="dz-phrase">${esc(phrase)}</b> 를 그대로 입력해 주세요</span><input name="phrase" lang="ko" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+        <button type="button" class="btn" id="dz-next2" disabled>다음</button>
+        <button type="button" class="linkish" id="dz-cancel">그만두기</button>
+      </form>`;
+    const f = $("#dz-form"), next = $("#dz-next2");
+    $("#dz-close").onclick = $("#dz-cancel").onclick = () => dlg.close();
+    f.phrase.oninput = () => { next.disabled = f.phrase.value.trim() !== phrase; };
+    f.onsubmit = e => { e.preventDefault(); if (!next.disabled) step3(); };
+    next.onclick = step3;
+  };
+  const step3 = () => {
+    dlg.innerHTML = `
+      <form class="sheet" id="dz-form" novalidate>
+        <button type="button" class="close" id="dz-close">닫기</button>
+        <h2>${esc(title)}</h2>
+        <label class="field">운영진 비밀번호를 한 번 더${pwField("pass", "", "current-password", 1)}</label>
+        <button class="btn danger-go" id="dz-go">${esc(title)}</button>
+        <button type="button" class="linkish" id="dz-cancel">그만두기</button>
+      </form>`;
+    bindPw(dlg);
+    const f = $("#dz-form");
+    $("#dz-close").onclick = $("#dz-cancel").onclick = () => dlg.close();
+    f.onsubmit = e => {
+      e.preventDefault();
+      if (!f.pass.value) return toast("운영진 비밀번호를 입력해 주세요.", true);
+      busy($("#dz-go"), async () => { await action(f.pass.value); await refresh(); dlg.close(); if (state.me && !state.players.some(p => p.id === state.me.id)) setMe(null); renderNav(); viewAdmin(); toast(doneMsg); });
+    };
+  };
+  step1(); dlg.showModal();
+}
+
+function bindMembers(app) {
+  app.querySelectorAll("[data-del]").forEach(b => (b.onclick = () => {
+    const p = state.players.find(x => x.id === b.dataset.del); if (!p) return;
+    const f = footprint(p.id);
+    openDanger({
+      title: "가입자 삭제", phrase: p.nickname, doneMsg: `${p.nickname} 님을 삭제했어요.`,
+      lines: [`가입자: ${p.nickname}`, `인증샷 ${f.subs}건`, `두근 물건 ${f.items}개`, `줄 선 기록 ${f.queues}곳`],
+      action: pass => api.adminDeletePlayer(state.adminToken, pass, p.id),
+    });
+  }));
+  app.querySelectorAll("[data-reset]").forEach(b => (b.onclick = () => {
+    const scope = b.dataset.reset;
+    const cfg = {
+      bingo: { title: "인증샷 전체 지우기", phrase: "인증샷 초기화", lines: [`인증샷 ${state.subs.length}건 (승인된 것 포함)`, "모든 빙고판이 빈 판으로 돌아가요", "가입자와 두근은 그대로예요"] },
+      dugeun: { title: "두근 물건 전체 지우기", phrase: "두근 초기화", lines: [`두근 물건 ${state.items.length}개`, `줄 선 기록 ${state.queue.length}건`, "가입자와 빙고는 그대로예요"] },
+      all: { title: "가입자까지 전부 지우기", phrase: "전부 초기화", lines: [`가입자 ${state.players.length}명`, `인증샷 ${state.subs.length}건`, `두근 물건 ${state.items.length}개`, "모두 다시 가입해야 해요", "운영진 비밀번호는 그대로예요"] },
+    }[scope];
+    openDanger({ ...cfg, doneMsg: "초기화했어요.", action: pass => api.adminReset(state.adminToken, pass, scope) });
+  }));
+}
+
 /* ---------- 두근 (장터) ---------- */
 const CATS = ["신발", "의류", "가방·조끼", "장비", "시계·전자기기", "보급·영양", "기타"];
 const ITEM_STATUS = { open: "판매 중", reserved: "예약 중", done: "거래 완료" };
@@ -683,10 +817,12 @@ const BEAT = '<svg class="beat" viewBox="0 0 40 42" aria-hidden="true"><path cla
 const PIN = '<svg class="pin" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.500S3.500 10 3.500 6.500a4.500 4.500 0 019 0C12.500 10 8 14.500 8 14.500z"/><circle cx="8" cy="6.500" r="1.500"/></svg>'.replace(/\.500/g, ".5");
 // 달리는 사람 픽토그램 (줄 앞쪽인 왼쪽을 보고 달림)
 const RUNNER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><g transform="translate(32 0) scale(-1 1)"><circle cx="20.500" cy="5.500" r="3.800"/><path d="M18 11.500L14 21M18 12l5.500 3 3-3.500M17 12.500l-5.500.500-2.500 4M14 21l6.500 3-1 8M14 21l-4.500 5.500H3.500"/></g></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
+// 한 손을 든 사람 픽토그램 (경매)
+const RAISER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><circle cx="15" cy="7" r="3.800"/><path d="M15 13v10.500M15 14.500l5.500-3.500 1-7.500M15 14.500l-4.500 5.500M15 23.500l-3.500 10M15 23.500l4 10"/></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
 const needLogin = () => { toast("먼저 가입해 주세요. 가입하면 빙고와 두근을 같이 써요.", true); location.hash = "#/"; };
 
-function tokensHtml(q, max) {
-  return q.slice(0, max).map(x => `<i class="tok-s${state.me && x.player_id === state.me.id ? " me" : ""}">${RUNNER}</i>`).join("") +
+function tokensHtml(q, max, auction) {
+  return q.slice(0, max).map(x => `<i class="tok-s${state.me && x.player_id === state.me.id ? " me" : ""}">${auction ? RAISER : RUNNER}</i>`).join("") +
     (q.length > max ? `<i class="tok-more">+${q.length - max}</i>` : "");
 }
 
@@ -711,12 +847,12 @@ function viewDugeun() {
     </div>
     ${list.length ? `<ul class="items">${list.map(i => { const q = queueOf(i.id); return `
       <li><button type="button" class="item is-${i.status}" data-item="${esc(i.id)}">
-        <span class="item-photo" style="background-image:url('${esc(cssUrl(i.photo_url))}')">${i.status !== "open" ? `<span class="badge">${ITEM_STATUS[i.status]}</span>` : ""}</span>
+        <span class="item-photo" style="background-image:url('${esc(cssUrl(i.photo_url))}')">${i.status !== "open" ? `<span class="badge">${ITEM_STATUS[i.status]}</span>` : ""}${isAuction(i) ? `<span class="badge mode">경매</span>` : ""}</span>
         <span class="item-body">
           <span class="item-title">${esc(i.title)}</span>
-          <span class="item-price">${won(i.price)}</span>
+          <span class="item-price">${isAuction(i) ? `<small>시작</small> ` : ""}${won(i.price)}</span>
           <span class="item-meta">${PIN}${esc(i.pickup)}</span>
-          <span class="item-queue">${q.length ? `${tokensHtml(q, 4)}<span>줄 ${q.length}명</span>${topOffer(q) > 0 ? `<span class="offer-top">최고 ${won(topOffer(q))}</span>` : ""}` : `<span>아직 줄이 없어요</span>`}</span>
+          <span class="item-queue">${q.length ? `${tokensHtml(q, 4, isAuction(i))}<span>${isAuction(i) ? `손든 사람 ${q.length}명` : `줄 ${q.length}명`}</span>${isAuction(i) && topOffer(q) > 0 ? `<span class="offer-top">최고 ${won(topOffer(q))}</span>` : ""}` : `<span>${isAuction(i) ? "아직 손 든 사람이 없어요" : "아직 줄이 없어요"}</span>`}</span>
         </span>
       </button></li>`; }).join("")}</ul>`
     : `<p class="empty">${cat ? `${esc(cat)}에는 아직 올라온 물건이 없어요.` : "아직 올라온 물건이 없어요. 첫 물건을 올려 보세요."}</p>`}`;
@@ -758,55 +894,66 @@ function openContactForm() {
 
 // 줄 그림: 트랙 위에 선 순서대로 달리는 사람. 말풍선은 각자 적은 제시 가격.
 // 올린 사람에게는 각 러너가 버튼이 되어, 눌러서 팔 사람을 고른다.
+// 물건마다 파는 방식이 둘: 줄 세우기(먼저 선 순서, 달리는 사람) / 경매(부른 가격 순서, 손 든 사람)
+const isAuction = item => item.mode === "auction";
+const lineOf = item => { const q = queueOf(item.id); return isAuction(item) ? [...q].sort((a, b) => (b.offer || 0) - (a.offer || 0)) : q; };
+
 function laneHtml(item, q, picked) {
   const mine = !!state.me && item.player_id === state.me.id;
   const inLine = !!state.me && q.some(x => x.player_id === state.me.id);
   const canJoin = !mine && !inLine && item.status !== "done";
   const canPick = mine && item.status !== "done";
-  const top = topOffer(q);
-  return `<div class="lane" role="list" aria-label="줄 선 순서">
+  const auction = isAuction(item), PIC = auction ? RAISER : RUNNER, top = topOffer(q);
+  return `<div class="lane${auction ? " auction" : ""}" role="list" aria-label="${auction ? "손 든 사람, 높은 가격 순서" : "줄 선 순서"}">
     ${q.map((x, n) => {
       const me = state.me && x.player_id === state.me.id, buyer = item.buyer_id === x.player_id;
       const cls = `tok${me ? " me" : ""}${buyer ? " buyer" : ""}${picked === x.player_id ? " picked" : ""}`;
-      const inner = `<em>${n + 1}</em>
-        ${buyer ? `<span class="bubble sold">구매</span>` : x.offer != null ? `<span class="bubble${x.offer === top ? " top" : ""}">${x.offer === 0 ? "나눔" : x.offer.toLocaleString("ko-KR")}</span>` : `<span class="bubble none" aria-hidden="true"></span>`}
-        ${RUNNER}<b>${me ? "나" : esc(nickOf(x.player_id))}</b>`;
+      const bubble = buyer ? `<span class="bubble sold">구매</span>`
+        : auction && x.offer != null ? `<span class="bubble${x.offer === top ? " top" : ""}">${x.offer.toLocaleString("ko-KR")}</span>`
+        : auction ? `<span class="bubble none" aria-hidden="true"></span>` : "";
+      const inner = `<em>${n + 1}</em>${bubble}${PIC}<b>${me ? "나" : esc(nickOf(x.player_id))}</b>`;
       return canPick ? `<button type="button" class="${cls} pick-b" data-pick="${esc(x.player_id)}" aria-pressed="${picked === x.player_id}" role="listitem">${inner}</button>`
         : `<span class="${cls}" role="listitem">${inner}</span>`; }).join("")}
-    ${canJoin ? `<button type="button" class="tok join" id="q-join" role="listitem"><em>${q.length + 1}</em><span class="bubble none" aria-hidden="true"></span>${RUNNER}<b>여기 서기</b></button>` : ""}
-    ${!q.length && !canJoin ? `<span class="lane-empty">아직 줄 선 사람이 없어요</span>` : ""}
+    ${canJoin ? `<button type="button" class="tok join" id="q-join" role="listitem"><em>${auction ? "+" : q.length + 1}</em>${auction ? `<span class="bubble none" aria-hidden="true"></span>` : ""}${PIC}<b>${auction ? "손들기" : "여기 서기"}</b></button>` : ""}
+    ${!q.length && !canJoin ? `<span class="lane-empty">${auction ? "아직 손 든 사람이 없어요" : "아직 줄 선 사람이 없어요"}</span>` : ""}
   </div>`;
 }
 
 function openItem(id, picked) {
   const dlg = $("#dlg"), item = state.items.find(i => i.id === id);
   if (!item) return;
-  const q = queueOf(id), mine = !!state.me && item.player_id === state.me.id;
+  const auction = isAuction(item);
+  const q = lineOf(item), mine = !!state.me && item.player_id === state.me.id;
   const pos = state.me ? q.findIndex(x => x.player_id === state.me.id) : -1;
-  const line = mine
-    ? (item.status === "done" ? (item.buyer_id ? `${nickOf(item.buyer_id)} 님에게 판매 완료했어요.` : "거래 완료로 바꾼 물건이에요.")
-      : q.length ? `${q.length}명이 줄 서 있어요.${topOffer(q) > 0 ? ` 가장 높은 제시 가격은 ${won(topOffer(q))}이에요.` : ""} 팔 사람을 눌러서 골라 주세요.` : "아직 줄 선 사람이 없어요.")
-    : item.status === "done" ? (state.me && item.buyer_id === state.me.id ? "내가 사기로 한 물건이에요. 톡방에서 수령을 정해 주세요."
-        : item.buyer_id ? `${nickOf(item.buyer_id)} 님에게 팔렸어요.` : "거래가 끝난 물건이에요.")
-    : pos >= 0 ? `줄 ${q.length}명 가운데 내 순서는 ${pos + 1}번이에요.`
-    : q.length ? `지금 ${q.length}명이 줄 서 있어요.` : "첫 번째로 줄 설 수 있어요.";
+  const top = topOffer(q);
+  const doneLine = mine ? (item.buyer_id ? `${nickOf(item.buyer_id)} 님에게 판매 완료했어요.` : "거래 완료로 바꾼 물건이에요.")
+    : state.me && item.buyer_id === state.me.id ? "내가 사기로 한 물건이에요. 톡방에서 수령을 정해 주세요."
+    : item.buyer_id ? `${nickOf(item.buyer_id)} 님에게 팔렸어요.` : "거래가 끝난 물건이에요.";
+  const line = item.status === "done" ? doneLine
+    : auction ? (mine ? (q.length ? `${q.length}명이 손들었어요. 가장 높은 가격은 ${won(top)}이에요. 팔 사람을 눌러서 골라 주세요.` : "아직 손 든 사람이 없어요.")
+        : pos >= 0 ? `${q.length}명 가운데 내 가격은 ${pos + 1}번째로 높아요.`
+        : q.length ? `지금 ${q.length}명이 손들었고, 가장 높은 가격은 ${won(top)}이에요.` : "첫 번째로 가격을 부를 수 있어요.")
+    : (mine ? (q.length ? `${q.length}명이 줄 서 있어요. 팔 사람을 눌러서 골라 주세요.` : "아직 줄 선 사람이 없어요.")
+        : pos >= 0 ? `줄 ${q.length}명 가운데 내 순서는 ${pos + 1}번이에요.`
+        : q.length ? `지금 ${q.length}명이 줄 서 있어요.` : "첫 번째로 줄 설 수 있어요.");
   dlg.innerHTML = `
     <div class="sheet dg-sheet">
       <button type="button" class="close" id="it-close">닫기</button>
       <img class="proof" src="${esc(item.photo_url)}" alt="${esc(item.title)} 사진">
-      <p class="it-tags"><span class="tagc">${esc(item.category)}</span><span class="tagc st-${item.status}">${ITEM_STATUS[item.status]}</span></p>
+      <p class="it-tags"><span class="tagc">${esc(item.category)}</span><span class="tagc mode-${auction ? "auction" : "queue"}">${auction ? "경매" : "줄 세우기"}</span><span class="tagc st-${item.status}">${ITEM_STATUS[item.status]}</span></p>
       <h2>${esc(item.title)}</h2>
-      <p class="it-price">${won(item.price)}</p>
+      <p class="it-price">${auction ? `<small>시작 가격</small> ` : ""}${won(item.price)}</p>
       ${item.description ? `<p class="it-desc">${esc(item.description)}</p>` : ""}
       <dl class="it-info"><dt>수령처</dt><dd>${esc(item.pickup)}</dd><dt>올린 사람</dt><dd>${esc(nickOf(item.player_id))}</dd></dl>
-      <h3>줄 서기</h3>
+      <h3>${auction ? "경매" : "줄 서기"}</h3>
       ${laneHtml(item, q, picked)}
       <p class="note">${esc(line)}</p>
       ${state.me && item.status === "done" && item.buyer_id && (mine || item.buyer_id === state.me.id) ? `<p class="deal" id="deal-contact">연락처를 불러오는 중…</p>` : ""}
-      ${!mine && item.status !== "done" ? `
-        <label class="field">${pos >= 0 ? "내 말풍선 가격" : "말풍선에 적을 가격"}<span class="price-in"><input id="q-offer" inputmode="numeric" maxlength="11" autocomplete="off" placeholder="안 적어도 돼요" value="${pos >= 0 && q[pos].offer != null ? q[pos].offer.toLocaleString("ko-KR") : ""}"><span>원</span></span></label>
-        <button type="button" class="btn" id="q-join2">${pos >= 0 ? "가격 바꾸기" : "줄 서기"}</button>` : ""}
-      ${pos >= 0 && item.status !== "done" ? `<button type="button" class="btn ghost" id="q-leave">줄에서 나오기</button>` : ""}
+      ${!mine && item.status !== "done" && auction ? `
+        <label class="field">${pos >= 0 ? "내가 부른 가격" : "부를 가격"}<span class="price-in"><input id="q-offer" inputmode="numeric" maxlength="11" autocomplete="off" placeholder="${item.price.toLocaleString("ko-KR")} 이상" value="${pos >= 0 && q[pos].offer != null ? q[pos].offer.toLocaleString("ko-KR") : ""}"><span>원</span></span></label>
+        <button type="button" class="btn" id="q-join2">${pos >= 0 ? "가격 바꾸기" : "손들기"}</button>` : ""}
+      ${!mine && item.status !== "done" && !auction && pos < 0 ? `<button type="button" class="btn" id="q-join2">줄 서기</button>` : ""}
+      ${pos >= 0 && item.status !== "done" ? `<button type="button" class="btn ghost" id="q-leave">${auction ? "손 내리기" : "줄에서 나오기"}</button>` : ""}
       ${mine && item.status !== "done" && q.length ? `<button type="button" class="btn" id="it-sell"${picked ? "" : " disabled"}>${picked ? `${esc(nickOf(picked))} 님에게 판매 완료` : "팔 사람을 골라 주세요"}</button>` : ""}
       ${mine ? `<div class="seg" role="group" aria-label="거래 상태">${Object.keys(ITEM_STATUS).map(s => `<button type="button" data-st="${s}" aria-pressed="${item.status === s}">${ITEM_STATUS[s]}</button>`).join("")}</div>` : ""}
       ${mine || state.adminToken ? `<button type="button" class="linkish" id="it-del">${mine ? "이 물건 지우기" : "운영진 권한으로 지우기"}</button>` : ""}
@@ -818,11 +965,13 @@ function openItem(id, picked) {
   const join = btn => {
     if (!state.me) { dlg.close(); return needLogin(); }
     const d = offerIn ? offerIn.value.replace(/\D/g, "") : "";
-    busy(btn, async () => { await api.queueJoin(state.me, id, d ? Number(d) : null); await again(); toast(pos >= 0 ? "가격을 바꿨어요." : "줄을 섰어요."); });
+    if (auction && !d) { if (offerIn) offerIn.focus(); return toast("부를 가격을 적어 주세요.", true); }
+    if (auction && Number(d) < item.price) { offerIn.focus(); return toast(`시작 가격 ${won(item.price)} 이상으로 불러 주세요.`, true); }
+    busy(btn, async () => { await api.queueJoin(state.me, id, auction ? Number(d) : null); await again(); toast(pos >= 0 ? "가격을 바꿨어요." : auction ? "손들었어요." : "줄을 섰어요."); });
   };
   ["#q-join", "#q-join2"].forEach(s => { const b = $(s, dlg); if (b) b.onclick = () => join(b); });
   const leave = $("#q-leave", dlg);
-  if (leave) leave.onclick = () => busy(leave, async () => { await api.queueLeave(state.me, id); await again(); toast("줄에서 나왔어요."); });
+  if (leave) leave.onclick = () => busy(leave, async () => { await api.queueLeave(state.me, id); await again(); toast(auction ? "손을 내렸어요." : "줄에서 나왔어요."); });
   dlg.querySelectorAll("[data-st]").forEach(b => (b.onclick = () => busy(b, async () => { await api.itemStatus(state.me, id, b.dataset.st); await again(); })));
   const deal = $("#deal-contact", dlg);
   if (deal) api.itemContact(state.me, id).then(c => {
@@ -851,8 +1000,13 @@ function openItemForm() {
       <img class="proof" id="it-prev" alt="고른 사진 미리보기" hidden>
       <label class="field">물건 이름<input name="title" maxlength="40" placeholder="예: 트레일화 270mm" autocomplete="off"></label>
       <label class="field">카테고리<select name="category"><option value="">골라 주세요</option>${CATS.map(c => `<option>${esc(c)}</option>`).join("")}</select></label>
-      <label class="field">가격<span class="price-in"><input name="price" inputmode="numeric" maxlength="11" placeholder="0" autocomplete="off"><span>원</span></span></label>
-      <label class="check"><input type="checkbox" name="free"> 나눔으로 올리기</label>
+      <fieldset class="modes">
+        <legend>파는 방식</legend>
+        <label class="mode-opt"><input type="radio" name="mode" value="queue" checked><span><b>줄 세우기</b>정한 가격에, 먼저 줄 선 순서로</span></label>
+        <label class="mode-opt"><input type="radio" name="mode" value="auction"><span><b>경매</b>시작 가격부터, 손들고 가격을 부르게</span></label>
+      </fieldset>
+      <label class="field"><span id="price-label">가격</span><span class="price-in"><input name="price" inputmode="numeric" maxlength="11" placeholder="0" autocomplete="off"><span>원</span></span></label>
+      <label class="check" id="free-wrap"><input type="checkbox" name="free"> 나눔으로 올리기</label>
       <label class="field">수령처<input name="pickup" maxlength="60" placeholder="예: 토요일 모닝벙, 월드컵경기장 트랙" autocomplete="off"></label>
       <label class="field">설명<textarea name="description" maxlength="500" rows="4" placeholder="상태, 사이즈, 산 시기 같은 걸 적어 주세요"></textarea></label>
       <button class="btn" id="it-go">올리기</button>
@@ -867,6 +1021,11 @@ function openItemForm() {
   };
   f.price.oninput = () => { const d = f.price.value.replace(/\D/g, "").slice(0, 9); f.price.value = d ? Number(d).toLocaleString("ko-KR") : ""; };
   f.free.onchange = () => { f.price.disabled = f.free.checked; if (f.free.checked) f.price.value = ""; };
+  f.querySelectorAll("input[name=mode]").forEach(r => (r.onchange = () => {
+    const a = f.mode.value === "auction";
+    $("#price-label").textContent = a ? "시작 가격" : "가격"; $("#free-wrap").hidden = a;
+    if (a && f.free.checked) { f.free.checked = false; f.price.disabled = false; }
+  }));
   f.onsubmit = e => {
     e.preventDefault();
     const title = f.title.value.trim(), category = f.category.value, pickup = f.pickup.value.trim();
@@ -874,10 +1033,10 @@ function openItemForm() {
     if (!blob) return toast("물건 사진을 골라 주세요.", true);
     if (!title) return toast("물건 이름을 적어 주세요.", true);
     if (!category) return toast("카테고리를 골라 주세요.", true);
-    if (!f.free.checked && !digits) return toast("가격을 적거나 나눔을 골라 주세요.", true);
+    if (!f.free.checked && !digits) return toast(f.mode.value === "auction" ? "시작 가격을 적어 주세요." : "가격을 적거나 나눔을 골라 주세요.", true);
     if (!pickup) return toast("수령처를 적어 주세요.", true);
     busy($("#it-go"), async () => {
-      await api.itemPost(state.me, { title, category, pickup, price: f.free.checked ? 0 : Number(digits), description: f.description.value.trim() }, blob);
+      await api.itemPost(state.me, { title, category, pickup, mode: f.mode.value, price: f.free.checked ? 0 : Number(digits), description: f.description.value.trim() }, blob);
       await refresh(); dlg.close(); state.cat = ""; viewDugeun(); toast("물건을 올렸어요.");
     });
   };

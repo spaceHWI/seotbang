@@ -263,6 +263,52 @@ returns boolean language sql security definer set search_path = public, extensio
   select bingo__is_admin(p_token);
 $$;
 
+-- 가입자 삭제·초기화: 운영진 로그인(토큰)에 더해 운영진 비밀번호를 한 번 더 확인한다.
+-- 돌려주는 값: 'ok' 또는 'bad_pass'(비밀번호 틀림. 시도 기록을 남기려고 예외를 던지지 않음)
+create or replace function public.bingo__admin_recheck(p_token text, p_pass text)
+returns text language plpgsql security definer set search_path = public, extensions as $$
+begin
+  if not bingo__is_admin(p_token) then raise exception '운영진 로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
+  if bingo__too_many('admin', bingo__ip(), 5, 15) then
+    raise exception '여러 번 틀렸어요. 15분 뒤에 다시 해 주세요.';
+  end if;
+  if not exists (select 1 from bingo_settings where key = 'admin_hash' and value = crypt(p_pass, value)) then
+    perform bingo__note('admin', bingo__ip());
+    return 'bad_pass';
+  end if;
+  return 'ok';
+end $$;
+revoke execute on function public.bingo__admin_recheck(text, text) from public, anon, authenticated;
+
+create or replace function public.bingo_admin_delete_player(p_token text, p_pass text, p_player uuid)
+returns text language plpgsql security definer set search_path = public, extensions as $$
+declare v text := bingo__admin_recheck(p_token, p_pass);
+begin
+  if v <> 'ok' then return v; end if;
+  delete from bingo_players where id = p_player;
+  if not found then raise exception '없는 가입자예요.'; end if;
+  return 'ok';
+end $$;
+
+-- p_scope: 'bingo' 인증샷 전체, 'dugeun' 두근 물건 전체, 'all' 가입자까지 전부
+create or replace function public.bingo_admin_reset(p_token text, p_pass text, p_scope text)
+returns text language plpgsql security definer set search_path = public, extensions as $$
+declare v text;
+begin
+  if p_scope not in ('bingo', 'dugeun', 'all') then raise exception '없는 초기화 범위예요.'; end if;
+  v := bingo__admin_recheck(p_token, p_pass);
+  if v <> 'ok' then return v; end if;
+  if p_scope = 'bingo' then
+    delete from bingo_submissions where true;
+  elsif p_scope = 'dugeun' then
+    delete from bingo_items where true;
+  else
+    delete from bingo_players where true;
+    delete from bingo_attempts where kind <> 'admin';
+  end if;
+  return 'ok';
+end $$;
+
 create or replace function public.bingo_review(p_token text, p_submission uuid, p_status text, p_reason text default null)
 returns void language plpgsql security definer set search_path = public, extensions as $$
 begin
@@ -288,6 +334,8 @@ grant execute on function
   public.bingo_admin_init(text),
   public.bingo_admin_login(text),
   public.bingo_admin_check(text),
+  public.bingo_admin_delete_player(text, text, uuid),
+  public.bingo_admin_reset(text, text, text),
   public.bingo_review(text, uuid, text, text)
 to anon, authenticated;
 
@@ -352,14 +400,18 @@ create policy "bingo items read" on public.bingo_items for select using (true);
 drop policy if exists "bingo item queue read" on public.bingo_item_queue;
 create policy "bingo item queue read" on public.bingo_item_queue for select using (true);
 
+-- 파는 방식: queue 줄 세우기(먼저 선 순서) / auction 경매(시작 가격 이상으로 부른 가격)
+alter table public.bingo_items add column if not exists mode text not null default 'queue' check (mode in ('queue', 'auction'));
+drop function if exists public.bingo_item_post(text, text, text, text, int, text, text);
 create or replace function public.bingo_item_post(
-  p_token text, p_title text, p_category text, p_description text, p_price int, p_pickup text, p_path text)
+  p_token text, p_title text, p_category text, p_description text, p_price int, p_pickup text, p_path text, p_mode text default 'queue')
 returns uuid language plpgsql security definer set search_path = public, extensions as $$
 declare v_player uuid := bingo__player(p_token); v_id uuid;
 begin
   if v_player is null then raise exception '로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
   if char_length(btrim(coalesce(p_title, ''))) not between 1 and 40 then raise exception '물건 이름은 1~40자로 적어 주세요.'; end if;
   if p_category not in ('신발','의류','가방·조끼','장비','시계·전자기기','보급·영양','기타') then raise exception '카테고리를 골라 주세요.'; end if;
+  if coalesce(p_mode, 'queue') not in ('queue', 'auction') then raise exception '파는 방식을 골라 주세요.'; end if;
   if char_length(coalesce(p_description, '')) > 500 then raise exception '설명은 500자까지 적을 수 있어요.'; end if;
   if p_price is null or p_price < 0 or p_price > 100000000 then raise exception '가격을 다시 확인해 주세요.'; end if;
   if char_length(btrim(coalesce(p_pickup, ''))) not between 1 and 60 then raise exception '수령처는 1~60자로 적어 주세요.'; end if;
@@ -367,8 +419,8 @@ begin
   if (select count(*) from bingo_items where player_id = v_player and status <> 'done') >= 20 then
     raise exception '거래 중인 물건은 20개까지 올릴 수 있어요.';
   end if;
-  insert into bingo_items (player_id, title, category, description, price, pickup, photo_path)
-  values (v_player, btrim(p_title), p_category, btrim(coalesce(p_description, '')), p_price, btrim(p_pickup), p_path)
+  insert into bingo_items (player_id, title, category, description, price, pickup, photo_path, mode)
+  values (v_player, btrim(p_title), p_category, btrim(coalesce(p_description, '')), p_price, btrim(p_pickup), p_path, coalesce(p_mode, 'queue'))
   returning id into v_id;
   return v_id;
 end $$;
@@ -434,14 +486,20 @@ alter table public.bingo_item_queue add column if not exists offer integer check
 drop function if exists public.bingo_item_queue_join(text, uuid);
 create or replace function public.bingo_item_queue_join(p_token text, p_item uuid, p_offer int default null)
 returns void language plpgsql security definer set search_path = public, extensions as $$
-declare v_player uuid := bingo__player(p_token); v_owner uuid; v_status text;
+declare v_player uuid := bingo__player(p_token); v_owner uuid; v_status text; v_mode text; v_price int;
 begin
   if v_player is null then raise exception '로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
-  select player_id, status into v_owner, v_status from bingo_items where id = p_item;
+  select player_id, status, mode, price into v_owner, v_status, v_mode, v_price from bingo_items where id = p_item;
   if v_owner is null then raise exception '없는 물건이에요.'; end if;
   if v_owner = v_player then raise exception '내가 올린 물건에는 줄을 설 수 없어요.'; end if;
   if v_status = 'done' then raise exception '거래가 끝난 물건이에요.'; end if;
   if p_offer is not null and (p_offer < 0 or p_offer > 100000000) then raise exception '가격을 다시 확인해 주세요.'; end if;
+  if v_mode = 'auction' then
+    if p_offer is null then raise exception '부를 가격을 적어 주세요.'; end if;
+    if p_offer < v_price then raise exception '시작 가격 이상으로 불러 주세요.'; end if;
+  else
+    p_offer := null;
+  end if;
   if not exists (select 1 from bingo_item_queue where item_id = p_item and player_id = v_player)
      and (select count(*) from bingo_item_queue where item_id = p_item) >= 30 then raise exception '줄이 꽉 찼어요.'; end if;
   insert into bingo_item_queue (item_id, player_id, offer) values (p_item, v_player, p_offer)
@@ -457,7 +515,7 @@ begin
 end $$;
 
 grant execute on function
-  public.bingo_item_post(text, text, text, text, int, text, text),
+  public.bingo_item_post(text, text, text, text, int, text, text, text),
   public.bingo_item_status(text, uuid, text),
   public.bingo_item_sell(text, uuid, uuid),
   public.bingo_item_contact(text, uuid),
