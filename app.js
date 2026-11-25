@@ -463,7 +463,7 @@ function doorsHtml() {
   return `<nav class="doors" aria-label="어디로 갈까요">
     <a class="door" href="#/bingo">
       <span class="door-art"><span class="mini big" aria-hidden="true">${CELLS.map((_, i) => `<i class="${mine ? (mine.done.has(i) ? "on" : "") : ([0, 6, 12, 18, 24].includes(i) ? "on" : "")}"></i>`).join("")}</span></span>
-      <span class="door-body"><b>미션 빙고</b><span>12월 1일 ~ 31일. 달리고, 찍고, 줄을 그어요.</span>
+      <span class="door-body"><b>미션 빙고</b><span>12월 1일 ~ 30일. 달리고, 찍고, 줄을 그어요.</span>
       <em>${mine ? `${mine.lines.length}빙고, 채운 칸 ${mine.done.size}/25` : `참가자 ${state.players.length}명`}</em></span>
     </a>
     <a class="door" href="#/dugeun">
@@ -561,7 +561,7 @@ function viewBingo() {
   app.innerHTML = `
     <section class="hero">
       <h1>12월 서트방 미션 빙고</h1>
-      <p class="period"><time datetime="2026-12-01">2026년 12월 1일</time> ~ <time datetime="2026-12-31">31일</time></p>
+      <p class="period"><time datetime="2026-12-01">2026년 12월 1일</time> ~ <time datetime="2026-12-30">30일</time></p>
       <p class="lede">달리고, 찍고, 줄을 그어요.</p>
     </section>
     ${HOWTO}
@@ -1000,7 +1000,8 @@ function openItem(id, picked) {
 
 // 공유: 휴대폰은 공유 창(가능하면 물건 사진을 같이 보냄), 그 밖에는 링크 복사
 async function shareItem(item) {
-  const url = `${location.origin}${location.pathname}#/dugeun/${item.id}`;
+  // 두근 전용 미리보기(썸네일)가 붙는 주소. 열면 이 물건 화면으로 넘어간다.
+  const url = `${location.origin}${location.pathname.replace(/[^/]*$/, "")}dugeun/?i=${item.id}`;
   const text = `[두근] ${item.title}, ${isAuction(item) ? "경매 시작 " : ""}${won(item.price)}`;
   if (navigator.share) {
     let files;
