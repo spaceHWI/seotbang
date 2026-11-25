@@ -412,7 +412,7 @@ function openCell(pid, cell, mine) {
   const canUpload = mine && st !== "approved";
   dlg.innerHTML = `
     <form method="dialog" class="sheet">
-      <button class="close" aria-label="닫기">닫기</button>
+      <button class="close" aria-label="닫기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <div class="sheet-ic">${icon(cell)}</div>
       <h2>${esc(title)}</h2>
       ${sub ? `<p class="cond">${esc(sub)}</p>` : ""}
@@ -728,7 +728,7 @@ async function viewAdmin() {
     const dlg = $("#dlg"), s = state.subs.find(x => x.id === id);
     dlg.innerHTML = `
       <form class="sheet" id="reject-form">
-        <button type="button" class="close" id="reject-close">닫기</button>
+        <button type="button" class="close" id="reject-close" aria-label="닫기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         <h2>반려하기</h2>
         <p>${esc(name(s.player_id))} · ${esc(CELLS[s.cell][0])}</p>
         <label class="field">반려 사유<input name="reason" maxlength="200" placeholder="참가자에게 보여요. 비워 둬도 돼요" autocomplete="off"></label>
@@ -773,7 +773,7 @@ function openDanger({ title, lines, phrase, action, doneMsg }) {
   const step1 = () => {
     dlg.innerHTML = `
       <div class="sheet">
-        <button type="button" class="close" id="dz-close">닫기</button>
+        <button type="button" class="close" id="dz-close" aria-label="닫기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         <h2>${esc(title)}</h2>
         <ul class="dz-list">${lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>
         <p class="note is-rejected">되돌릴 수 없어요.</p>
@@ -786,7 +786,7 @@ function openDanger({ title, lines, phrase, action, doneMsg }) {
   const step2 = () => {
     dlg.innerHTML = `
       <form class="sheet" id="dz-form" novalidate>
-        <button type="button" class="close" id="dz-close">닫기</button>
+        <button type="button" class="close" id="dz-close" aria-label="닫기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         <h2>${esc(title)}</h2>
         <label class="field"><span>확인을 위해 <b class="dz-phrase">${esc(phrase)}</b> 를 그대로 입력해 주세요</span><input name="phrase" lang="ko" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
         <button type="button" class="btn" id="dz-next2" disabled>다음</button>
@@ -801,7 +801,7 @@ function openDanger({ title, lines, phrase, action, doneMsg }) {
   const step3 = () => {
     dlg.innerHTML = `
       <form class="sheet" id="dz-form" novalidate>
-        <button type="button" class="close" id="dz-close">닫기</button>
+        <button type="button" class="close" id="dz-close" aria-label="닫기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         <h2>${esc(title)}</h2>
         <label class="field">운영진 비밀번호를 한 번 더${pwField("pass", "", "current-password", 1)}</label>
         <button class="btn danger-go" id="dz-go">${esc(title)}</button>
@@ -913,7 +913,7 @@ function openContactForm() {
   const dlg = $("#dlg");
   dlg.innerHTML = `
     <form class="sheet" id="contact-form" novalidate>
-      <button type="button" class="close" id="it-close">닫기</button>
+      <button type="button" class="close" id="it-close" aria-label="닫기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <h2>내 연락처</h2>
       <label class="field">연락처<input name="contact" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="010-1234-5678" value="${esc(state.myContact || "")}"></label>
       <p class="small">두근에서 거래가 성사된 상대에게만 보여요.</p>
@@ -974,7 +974,7 @@ function openItem(id, picked) {
         : q.length ? `지금 ${q.length}명이 줄 서 있어요.` : "첫 번째로 줄 설 수 있어요.");
   dlg.innerHTML = `
     <div class="sheet dg-sheet">
-      <button type="button" class="close" id="it-close">닫기</button>
+      <button type="button" class="close" id="it-close" aria-label="닫기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <img class="proof" src="${esc(item.photo_url)}" alt="${esc(item.title)} 사진">
       <p class="it-tags"><span class="tagc">${esc(item.category)}</span><span class="tagc mode-${auction ? "auction" : "queue"}">${auction ? "경매" : "줄 세우기"}</span><span class="tagc st-${item.status}">${ITEM_STATUS[item.status]}</span></p>
       <h2>${esc(item.title)}</h2>
@@ -1091,7 +1091,7 @@ function openItemForm() {
   const dlg = $("#dlg");
   dlg.innerHTML = `
     <form class="sheet dg-sheet" id="it-form" novalidate>
-      <button type="button" class="close" id="it-close">닫기</button>
+      <button type="button" class="close" id="it-close" aria-label="닫기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <h2>물건 올리기</h2>
       <label class="pick"><input type="file" accept="image/*" id="it-file"><span>사진 고르기</span></label>
       <img class="proof" id="it-prev" alt="고른 사진 미리보기" hidden>
