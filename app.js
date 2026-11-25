@@ -446,6 +446,7 @@ function openCell(pid, cell, mine) {
   dlg.showModal();
 }
 $("#dlg").addEventListener("click", e => { if (e.target.id === "dlg") e.target.close(); });
+$("#dlg").addEventListener("close", () => { if (location.hash.startsWith("#/dugeun/")) history.replaceState(null, "", "#/dugeun"); });
 
 /* ---------- 화면: 시작 / 내 빙고판 ---------- */
 const HOWTO = `
@@ -821,6 +822,7 @@ const PIN = '<svg class="pin" viewBox="0 0 16 16" aria-hidden="true"><path d="M8
 const RUNNER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><g transform="translate(32 0) scale(-1 1)"><circle cx="20.500" cy="5.500" r="3.800"/><path d="M18 11.500L14 21M18 12l5.500 3 3-3.500M17 12.500l-5.500.500-2.500 4M14 21l6.500 3-1 8M14 21l-4.500 5.500H3.500"/></g></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
 // 한 손을 든 사람 픽토그램 (경매)
 const RAISER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><circle cx="15" cy="7" r="3.800"/><path d="M15 13v10.500M15 14.500l5.500-3.500 1-7.500M15 14.500l-4.500 5.500M15 23.500l-3.500 10M15 23.500l4 10"/></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
+const SHARE = '<svg class="ic-share" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3.500M7.500 7.500L12 3l4.500 4.500M5 12v7.500h14V12"/></svg>'.replace(/\.500/g, ".5");
 const needLogin = () => { toast("먼저 가입해 주세요. 가입하면 빙고와 두근을 같이 써요.", true); location.hash = "#/"; };
 
 function tokensHtml(q, max, auction) {
@@ -958,10 +960,14 @@ function openItem(id, picked) {
       ${pos >= 0 && item.status !== "done" ? `<button type="button" class="btn ghost" id="q-leave">${auction ? "손 내리기" : "줄에서 나오기"}</button>` : ""}
       ${mine && item.status !== "done" && q.length ? `<button type="button" class="btn" id="it-sell"${picked ? "" : " disabled"}>${picked ? `${esc(nickOf(picked))} 님에게 판매 완료` : "팔 사람을 골라 주세요"}</button>` : ""}
       ${mine ? `<div class="seg" role="group" aria-label="거래 상태">${Object.keys(ITEM_STATUS).map(s => `<button type="button" data-st="${s}" aria-pressed="${item.status === s}">${ITEM_STATUS[s]}</button>`).join("")}</div>` : ""}
+      <button type="button" class="btn ghost" id="it-share">${SHARE}이 물건 공유하기</button>
       ${mine || state.adminToken ? `<button type="button" class="linkish" id="it-del">${mine ? "이 물건 지우기" : "운영진 권한으로 지우기"}</button>` : ""}
     </div>`;
-  const again = async () => { await refresh(); if (location.hash.replace(/^#\/?/, "") === "dugeun") viewDugeun(); state.items.some(i => i.id === id) ? openItem(id) : dlg.close(); };
+  const again = async () => { await refresh(); if (location.hash.replace(/^#\/?/, "").startsWith("dugeun")) viewDugeun(); state.items.some(i => i.id === id) ? openItem(id) : dlg.close(); };
   $("#it-close").onclick = () => dlg.close();
+  // 주소창을 이 물건의 링크로 바꿔 둔다(복사해도 같은 물건이 열림)
+  if (location.hash !== `#/dugeun/${id}`) history.replaceState(null, "", `#/dugeun/${id}`);
+  $("#it-share").onclick = () => shareItem(item);
   const offerIn = $("#q-offer", dlg);
   if (offerIn) offerIn.oninput = () => { const d = offerIn.value.replace(/\D/g, "").slice(0, 9); offerIn.value = d ? Number(d).toLocaleString("ko-KR") : ""; };
   const join = btn => {
@@ -990,6 +996,24 @@ function openItem(id, picked) {
     busy(del, async () => { await api.itemDelete(mine ? state.me.token : state.adminToken, id); await again(); toast("물건을 지웠어요."); });
   };
   if (!dlg.open) dlg.showModal();
+}
+
+// 공유: 휴대폰은 공유 창(가능하면 물건 사진을 같이 보냄), 그 밖에는 링크 복사
+async function shareItem(item) {
+  const url = `${location.origin}${location.pathname}#/dugeun/${item.id}`;
+  const text = `[두근] ${item.title}, ${isAuction(item) ? "경매 시작 " : ""}${won(item.price)}`;
+  if (navigator.share) {
+    let files;
+    try {
+      const blob = await (await fetch(item.photo_url)).blob();
+      const f = new File([blob], "dugeun.jpg", { type: "image/jpeg" });
+      if (navigator.canShare && navigator.canShare({ files: [f] })) files = [f];
+    } catch { /* 사진 없이 링크만 공유 */ }
+    try { await navigator.share(files ? { title: item.title, text: `${text}\n${url}`, files } : { title: item.title, text, url }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  try { await navigator.clipboard.writeText(`${text}\n${url}`); toast("링크를 복사했어요. 톡방에 붙여 넣으세요."); }
+  catch { window.prompt("이 링크를 복사하세요", url); }
 }
 
 function openItemForm() {
@@ -1053,6 +1077,12 @@ function route() {
   if (h === "all") viewAll();
   else if (h === "bingo") viewBingo();
   else if (h === "dugeun") viewDugeun();
+  else if (h.startsWith("dugeun/")) {
+    viewDugeun();
+    const id = h.slice(7);
+    if (state.items.some(i => i.id === id)) openItem(id);
+    else { history.replaceState(null, "", "#/dugeun"); toast("없는 물건이에요. 지워졌을 수 있어요.", true); }
+  }
   else if (h.startsWith("u/")) viewUser(h.slice(2));
   else if (h === "admin") viewAdmin();
   else viewHome();
