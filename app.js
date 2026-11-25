@@ -679,7 +679,7 @@ const ITEM_STATUS = { open: "판매 중", reserved: "예약 중", done: "거래 
 const won = n => (n === 0 ? "나눔" : n.toLocaleString("ko-KR") + "원");
 const nickOf = id => (state.players.find(p => p.id === id) || {}).nickname || "?";
 const queueOf = id => state.queue.filter(q => q.item_id === id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
-const BEAT = '<svg class="beat" viewBox="0 0 40 36" aria-hidden="true"><path class="beat-heart" d="M20 33C8 24 4 18.5 4 12.5A8.5 8.5 0 0120 9.500a8.500 8.500 0 0116 3C36 18.500 32 24 20 33z"/><path class="beat-line" d="M9.500 18.500h5.500l2.500-5 4 10 3-7 1.500 2h4.500"/></svg>'.replace(/\.500/g, ".5");
+const BEAT = '<svg class="beat" viewBox="0 0 40 42" aria-hidden="true"><path class="beat-leg" d="M16.5 25l-3 8.500M23.500 25l4.500 7"/><path class="beat-shoe" d="M9.500 33.500h6l4 2.800V38.500h-10z"/><path class="beat-shoe" d="M24.500 32.500h6l4 2.800V37.500h-10z"/><path class="beat-heart" d="M20 28C10 20.500 5.500 16 5.500 11A7.500 7.500 0 0120 8a7.500 7.500 0 0114.500 3C34.500 16 30 20.500 20 28z"/></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
 const PIN = '<svg class="pin" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.500S3.500 10 3.500 6.500a4.500 4.500 0 019 0C12.500 10 8 14.500 8 14.500z"/><circle cx="8" cy="6.500" r="1.500"/></svg>'.replace(/\.500/g, ".5");
 // 달리는 사람 픽토그램 (줄 앞쪽인 왼쪽을 보고 달림)
 const RUNNER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><g transform="translate(32 0) scale(-1 1)"><circle cx="20.500" cy="5.500" r="3.800"/><path d="M18 11.500L14 21M18 12l5.500 3 3-3.500M17 12.500l-5.500.500-2.500 4M14 21l6.500 3-1 8M14 21l-4.500 5.500H3.500"/></g></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");

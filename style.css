@@ -282,8 +282,9 @@ body { padding-bottom: 5.5rem; }
 .dg-head h1 { display: flex; align-items: center; gap: .5rem; }
 .dg-head .lede { white-space: normal; margin-top: .375rem; }
 .beat { width: 1.1em; height: auto; flex: none; overflow: visible; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.beat-heart { fill: var(--track); stroke: var(--peach); stroke-width: 2.5; }
-.beat-line { stroke: var(--cream); stroke-width: 2.5; }
+.beat-heart { fill: var(--track); stroke: var(--peach); stroke-width: 2.2; }
+.beat-leg { stroke: var(--peach); stroke-width: 2.6; }
+.beat-shoe { fill: var(--cream); stroke: var(--peach); stroke-width: 1.4; }
 
 .chips { display: flex; flex-wrap: wrap; gap: .375rem; margin: 1.25rem 0 1rem; }
 .chips button { flex: none; padding: .4rem .75rem; border: 2px solid var(--cream); border-radius: 999px; background: transparent; color: var(--cream); font-weight: 600; font-size: .9375rem; cursor: pointer; white-space: nowrap; }
