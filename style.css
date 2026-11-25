@@ -429,3 +429,10 @@ textarea { resize: vertical; }
 .mode-opt input { width: auto; flex: none; padding: 0; border: 0; margin: .3rem 0 0; }
 .mode-opt span { flex: 1; }
 .dz-phrase { display: inline; }
+
+.foot p { margin: 0; }
+.foot p + p { margin-top: .25rem; }
+.foot a { text-underline-offset: 3px; }
+.nav-key { display: grid; place-items: center; width: 1.9em; height: 1.9em; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(255,243,220,.55); }
+.nav-key svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.nav-key:hover { background: rgba(255,243,220,.14); }

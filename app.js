@@ -321,9 +321,11 @@ async function busy(btn, fn) {
 }
 
 function renderNav() {
+  const KEY = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M11.200 11.200L20 20M16 16l2.500-2.500M18.500 18.500l2-2"/></svg>'.replace(/\.500/g, ".5").replace(/\.200/g, ".2");
+  const admin = `<a class="nav-key" href="#/admin" aria-label="운영진" title="운영진">${KEY}</a>`;
   $("#nav").innerHTML = state.me
-    ? `<a href="#/bingo">빙고</a><a href="#/dugeun">두근</a><a href="#/all">참가자</a><a href="#/admin">운영진</a><button type="button" class="linkish" id="logout">나가기</button>`
-    : `<a href="#/bingo">빙고</a><a href="#/dugeun">두근</a><a href="#/all">참가자</a><a href="#/admin">운영진</a>`;
+    ? `<a href="#/bingo">빙고</a><a href="#/dugeun">두근</a><button type="button" class="linkish" id="logout">나가기</button>${admin}`
+    : `<a href="#/bingo">빙고</a><a href="#/dugeun">두근</a>${admin}`;
   const lo = $("#logout");
   if (lo) lo.onclick = () => { if (confirm("이 기기에서 로그아웃할까요? 기록은 그대로 남아요.")) { api.logout(state.me.token).catch(() => {}); setMe(null); location.hash = "#/"; route(); } };
 }
