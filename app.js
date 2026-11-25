@@ -457,6 +457,12 @@ const HOWTO = `
   </ol>`;
 
 // 첫 화면: 가입(또는 이어서 하기) + 빙고/두근 두 갈래. 두 갈래는 가입 없이도 들어가 볼 수 있다.
+// 서트방 인스타그램·오픈카톡방 바로가기 (첫 화면과 푸터에 같이 씀)
+const SOCIAL = `<p class="social">
+  <a href="https://www.instagram.com/seotbang/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500h3l1.500-2.500h7L17 8.500h3v10.500H4z"/><circle cx="12" cy="13.500" r="3.200"/></svg>서트방 인스타그램</a>
+  <a href="https://open.kakao.com/o/gTYM7Tqh" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11h-8.500L7 20v-4H4z"/><path d="M8.500 10.500h7"/></svg>서트방 오픈카톡방</a>
+</p>`.replace(/\.500/g, ".5").replace(/\.200/g, ".2");
+
 function doorsHtml() {
   const open = state.items.filter(i => i.status !== "done").length;
   const mine = state.me ? score(state.me.id) : null;
@@ -468,10 +474,11 @@ function doorsHtml() {
     </a>
     <a class="door" href="#/dugeun">
       <span class="door-art">${BEAT}</span>
-      <span class="door-body"><b>두근</b><span>서트방 러너들의 장터. 갖고 싶으면 줄부터 서요.</span>
+      <span class="door-body"><b>두근</b><span>땀 흘리는 사람들의 중고 장터</span>
       <em>거래 중인 물건 ${open}개</em></span>
     </a>
-  </nav>`;
+  </nav>
+  ${SOCIAL}`;
 }
 
 function viewHome() {
@@ -811,7 +818,7 @@ function bindMembers(app) {
 }
 
 /* ---------- 두근 (장터) ---------- */
-const CATS = ["신발", "의류", "가방·조끼", "장비", "시계·전자기기", "보급·영양", "기타"];
+const CATS = ["운동화", "운동복", "가방·조끼", "장비·용품", "시계·전자기기", "보급·영양", "기타"];
 const ITEM_STATUS = { open: "판매 중", reserved: "예약 중", done: "거래 완료" };
 const won = n => (n === 0 ? "나눔" : n.toLocaleString("ko-KR") + "원");
 const nickOf = id => (state.players.find(p => p.id === id) || {}).nickname || "?";
@@ -821,7 +828,7 @@ const PIN = '<svg class="pin" viewBox="0 0 16 16" aria-hidden="true"><path d="M8
 // 달리는 사람 픽토그램 (줄 앞쪽인 왼쪽을 보고 달림)
 const RUNNER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><g transform="translate(32 0) scale(-1 1)"><circle cx="20.500" cy="5.500" r="3.800"/><path d="M18 11.500L14 21M18 12l5.500 3 3-3.500M17 12.500l-5.500.500-2.500 4M14 21l6.500 3-1 8M14 21l-4.500 5.500H3.500"/></g></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
 // 한 손을 든 사람 픽토그램 (경매)
-const RAISER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><circle cx="15" cy="7" r="3.800"/><path d="M15 13v10.500M15 14.500l5.500-3.500 1-7.500M15 14.500l-4.500 5.500M15 23.500l-3.500 10M15 23.500l4 10"/></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
+const RAISER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><circle cx="15" cy="6.500" r="3.800"/><path d="M15 13v10.500M15 14l5.500-2.500V3M15 14l-4.500 2.500V23M13 23.500V34M17 23.500V34"/></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
 const SHARE = '<svg class="ic-share" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3.500M7.500 7.500L12 3l4.500 4.500M5 12v7.500h14V12"/></svg>'.replace(/\.500/g, ".5");
 const needLogin = () => { toast("먼저 가입해 주세요. 가입하면 빙고와 두근을 같이 써요.", true); location.hash = "#/"; };
 
@@ -840,7 +847,7 @@ function viewDugeun() {
     <section class="dg-head">
       <div>
         <h1>${BEAT}두근</h1>
-        <p class="lede">서트방 러너들의 장터. 갖고 싶으면 줄부터 서요.</p>
+        <p class="lede">땀 흘리는 사람들의 중고 장터</p>
       </div>
       <button type="button" class="btn" id="dg-new">물건 올리기</button>
     </section>
@@ -1025,7 +1032,7 @@ function openItemForm() {
       <h2>물건 올리기</h2>
       <label class="pick"><input type="file" accept="image/*" id="it-file"><span>사진 고르기</span></label>
       <img class="proof" id="it-prev" alt="고른 사진 미리보기" hidden>
-      <label class="field">물건 이름<input name="title" maxlength="40" placeholder="예: 트레일화 270mm" autocomplete="off"></label>
+      <label class="field">물건 이름<input name="title" maxlength="40" placeholder="예: 러닝화 270mm, 요가 매트" autocomplete="off"></label>
       <label class="field">카테고리<select name="category"><option value="">골라 주세요</option>${CATS.map(c => `<option>${esc(c)}</option>`).join("")}</select></label>
       <fieldset class="modes">
         <legend>파는 방식</legend>
@@ -1034,7 +1041,7 @@ function openItemForm() {
       </fieldset>
       <label class="field"><span id="price-label">가격</span><span class="price-in"><input name="price" inputmode="numeric" maxlength="11" placeholder="0" autocomplete="off"><span>원</span></span></label>
       <label class="check" id="free-wrap"><input type="checkbox" name="free"> 나눔으로 올리기</label>
-      <label class="field">수령처<input name="pickup" maxlength="60" placeholder="예: 토요일 모닝벙, 월드컵경기장 트랙" autocomplete="off"></label>
+      <label class="field">수령처<input name="pickup" maxlength="60" placeholder="예: 주말 운동 모임, 월드컵경기장" autocomplete="off"></label>
       <label class="field">설명<textarea name="description" maxlength="500" rows="4" placeholder="상태, 사이즈, 산 시기 같은 걸 적어 주세요"></textarea></label>
       <button class="btn" id="it-go">올리기</button>
     </form>`;

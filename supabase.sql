@@ -374,7 +374,7 @@ create table if not exists public.bingo_items (
   id uuid primary key default gen_random_uuid(),
   player_id uuid not null references public.bingo_players(id) on delete cascade,
   title text not null check (char_length(title) between 1 and 40),
-  category text not null check (category in ('신발','의류','가방·조끼','장비','시계·전자기기','보급·영양','기타')),
+  category text not null check (category in ('운동화','운동복','가방·조끼','장비·용품','시계·전자기기','보급·영양','기타')),
   description text not null default '' check (char_length(description) <= 500),
   price integer not null check (price between 0 and 100000000),
   pickup text not null check (char_length(pickup) between 1 and 60),
@@ -389,6 +389,12 @@ create table if not exists public.bingo_item_queue (
   created_at timestamptz not null default now(),
   primary key (item_id, player_id)
 );
+
+-- 카테고리 이름 변경(신발→운동화, 의류→운동복, 장비→장비·용품): 이미 있는 표와 물건에도 반영
+alter table public.bingo_items drop constraint if exists bingo_items_category_check;
+update public.bingo_items set category = case category when '신발' then '운동화' when '의류' then '운동복' when '장비' then '장비·용품' else category end
+where category in ('신발', '의류', '장비');
+alter table public.bingo_items add constraint bingo_items_category_check check (category in ('운동화','운동복','가방·조끼','장비·용품','시계·전자기기','보급·영양','기타'));
 
 alter table public.bingo_items enable row level security;
 alter table public.bingo_item_queue enable row level security;
@@ -410,7 +416,7 @@ declare v_player uuid := bingo__player(p_token); v_id uuid;
 begin
   if v_player is null then raise exception '로그인이 풀렸어요. 다시 들어와 주세요.'; end if;
   if char_length(btrim(coalesce(p_title, ''))) not between 1 and 40 then raise exception '물건 이름은 1~40자로 적어 주세요.'; end if;
-  if p_category not in ('신발','의류','가방·조끼','장비','시계·전자기기','보급·영양','기타') then raise exception '카테고리를 골라 주세요.'; end if;
+  if p_category not in ('운동화','운동복','가방·조끼','장비·용품','시계·전자기기','보급·영양','기타') then raise exception '카테고리를 골라 주세요.'; end if;
   if coalesce(p_mode, 'queue') not in ('queue', 'auction') then raise exception '파는 방식을 골라 주세요.'; end if;
   if char_length(coalesce(p_description, '')) > 500 then raise exception '설명은 500자까지 적을 수 있어요.'; end if;
   if p_price is null or p_price < 0 or p_price > 100000000 then raise exception '가격을 다시 확인해 주세요.'; end if;
