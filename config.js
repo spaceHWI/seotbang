@@ -4,4 +4,6 @@
 window.BINGO_CONFIG = {
   supabaseUrl: "https://tnjdvpwshqlgupggjtux.supabase.co",
   supabaseKey: "sb_publishable_wrlmuFTHT2UMFJt-za7jfA_zKPneZqg",
+  // 카카오 디벨로퍼스 앱의 JavaScript 키. 넣으면 두근에 "카카오톡으로 보내기"가 생긴다.
+  kakaoKey: "",
 };

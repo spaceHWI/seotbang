@@ -477,8 +477,7 @@ function doorsHtml() {
       <span class="door-body"><b>두근</b><span>땀 흘리는 사람들의 중고 장터</span>
       <em>거래 중인 물건 ${open}개</em></span>
     </a>
-  </nav>
-  ${SOCIAL}`;
+  </nav>`;
 }
 
 function viewHome() {
@@ -563,6 +562,7 @@ function viewBingo() {
       ${rankingHtml()}
       <details class="fold"><summary>참여 방법 다시 보기</summary>${HOWTO}</details>`;
     bindBoard(app);
+    cheer();
     return;
   }
   app.innerHTML = `
@@ -578,6 +578,23 @@ function viewBingo() {
       <div class="board"><div class="grid">${CELLS.map(([t, s], i) => `<div class="cell is-empty">${icon(i)}<span class="cell-title">${esc(t)}</span>${s ? `<span class="cell-sub">${esc(s)}</span>` : ""}</div>`).join("")}</div></div>
     </section>
     ${rankingHtml()}`;
+}
+
+// 새 빙고 줄이 생기면 빙고판 위에서 축하 영상을 한 번 틀어 준다.
+function cheer() {
+  const n = score(state.me.id).lines.length, key = "stb-bingo-cheer-" + state.me.id;
+  let seen = 0;
+  try { seen = Number(localStorage.getItem(key)) || 0; } catch { /* 저장 불가 */ }
+  try { if (n !== seen) localStorage.setItem(key, String(n)); } catch { /* 저장 불가 */ }
+  if (n <= seen) return;
+  const board = $("#app .board");
+  if (!board) return;
+  const o = document.createElement("button");
+  o.type = "button"; o.className = "cheer"; o.setAttribute("aria-label", "축하 화면 닫기");
+  o.innerHTML = `<img src="assets/cheer.webp?v=${Date.now()}" alt="빙고 축하">`;
+  const close = () => { o.classList.add("out"); setTimeout(() => o.remove(), 350); };
+  o.onclick = close;
+  setTimeout(() => { board.appendChild(o); setTimeout(close, 9200); }, 900);
 }
 
 /* ---------- 화면: 참가자 ---------- */
@@ -829,6 +846,7 @@ const PIN = '<svg class="pin" viewBox="0 0 16 16" aria-hidden="true"><path d="M8
 const RUNNER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><g transform="translate(32 0) scale(-1 1)"><circle cx="20.500" cy="5.500" r="3.800"/><path d="M18 11.500L14 21M18 12l5.500 3 3-3.500M17 12.500l-5.500.500-2.500 4M14 21l6.500 3-1 8M14 21l-4.500 5.500H3.500"/></g></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
 // 한 손을 든 사람 픽토그램 (경매)
 const RAISER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><circle cx="15" cy="6.500" r="3.800"/><path d="M15 13v10.500M15 14l5.500-2.500V3M15 14l-4.500 2.500V23M13 23.500V34M17 23.500V34"/></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
+const TALK = '<svg class="ic-share" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4C6.800 4 3 7.200 3 11c0 2.400 1.500 4.500 3.900 5.700L6 20.500l4.300-2.700c.600.100 1.100.100 1.700.100 5.200 0 9-3.100 9-6.900S17.200 4 12 4z"/></svg>'.replace(/\.([0-9])00/g, ".$1");
 const SHARE = '<svg class="ic-share" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3.500M7.500 7.500L12 3l4.500 4.500M5 12v7.500h14V12"/></svg>'.replace(/\.500/g, ".5");
 const needLogin = () => { toast("먼저 가입해 주세요. 가입하면 빙고와 두근을 같이 써요.", true); location.hash = "#/"; };
 
@@ -967,7 +985,8 @@ function openItem(id, picked) {
       ${pos >= 0 && item.status !== "done" ? `<button type="button" class="btn ghost" id="q-leave">${auction ? "손 내리기" : "줄에서 나오기"}</button>` : ""}
       ${mine && item.status !== "done" && q.length ? `<button type="button" class="btn" id="it-sell"${picked ? "" : " disabled"}>${picked ? `${esc(nickOf(picked))} 님에게 판매 완료` : "팔 사람을 골라 주세요"}</button>` : ""}
       ${mine ? `<div class="seg" role="group" aria-label="거래 상태">${Object.keys(ITEM_STATUS).map(s => `<button type="button" data-st="${s}" aria-pressed="${item.status === s}">${ITEM_STATUS[s]}</button>`).join("")}</div>` : ""}
-      <button type="button" class="btn ghost" id="it-share">${SHARE}이 물건 공유하기</button>
+      ${cfg.kakaoKey ? `<button type="button" class="btn kakao" id="it-kakao">${TALK}카카오톡으로 보내기</button>` : ""}
+      <button type="button" class="btn ghost" id="it-share">${SHARE}${cfg.kakaoKey ? "다른 곳에 공유하기" : "이 물건 공유하기"}</button>
       ${mine || state.adminToken ? `<button type="button" class="linkish" id="it-del">${mine ? "이 물건 지우기" : "운영진 권한으로 지우기"}</button>` : ""}
     </div>`;
   const again = async () => { await refresh(); if (location.hash.replace(/^#\/?/, "").startsWith("dugeun")) viewDugeun(); state.items.some(i => i.id === id) ? openItem(id) : dlg.close(); };
@@ -975,6 +994,7 @@ function openItem(id, picked) {
   // 주소창을 이 물건의 링크로 바꿔 둔다(복사해도 같은 물건이 열림)
   if (location.hash !== `#/dugeun/${id}`) history.replaceState(null, "", `#/dugeun/${id}`);
   $("#it-share").onclick = () => shareItem(item);
+  if (cfg.kakaoKey) { kakao(); $("#it-kakao").onclick = () => sendKakao(item); }
   const offerIn = $("#q-offer", dlg);
   if (offerIn) offerIn.oninput = () => { const d = offerIn.value.replace(/\D/g, "").slice(0, 9); offerIn.value = d ? Number(d).toLocaleString("ko-KR") : ""; };
   const join = btn => {
@@ -1006,9 +1026,44 @@ function openItem(id, picked) {
 }
 
 // 공유: 휴대폰은 공유 창(가능하면 물건 사진을 같이 보냄), 그 밖에는 링크 복사
+// 카카오톡 공유: config.js에 kakaoKey가 있을 때만 SDK를 불러온다.
+const KAKAO_SDK = "https://t1.kakaocdn.net/kakao_js_sdk/2.8.1/kakao.min.js";
+const KAKAO_SRI = "sha384-OL+ylM/iuPLtW5U3XcvLSGhE8JzReKDank5InqlHGWPhb4140/yrBw0bg0y7+C9J";
+let kakaoLoad = null;
+function kakao() {
+  if (!cfg.kakaoKey) return Promise.resolve(null);
+  if (!kakaoLoad) kakaoLoad = new Promise(res => {
+    const s = document.createElement("script");
+    s.src = KAKAO_SDK; s.integrity = KAKAO_SRI; s.crossOrigin = "anonymous";
+    s.onload = () => { try { if (!window.Kakao.isInitialized()) window.Kakao.init(cfg.kakaoKey); res(window.Kakao); } catch { res(null); } };
+    s.onerror = () => { kakaoLoad = null; res(null); };
+    document.head.appendChild(s);
+  });
+  return kakaoLoad;
+}
+const itemUrl = item => `${location.origin}${location.pathname.replace(/[^/]*$/, "")}dugeun/?i=${item.id}`;
+
+function sendKakao(item) {
+  const K = window.Kakao;
+  if (!K || !K.isInitialized || !K.isInitialized()) { kakao(); toast("카카오톡을 불러오는 중이에요. 다시 눌러 주세요."); return; }
+  const url = itemUrl(item);
+  try {
+    K.Share.sendDefault({
+      objectType: "feed",
+      content: {
+        title: `[두근] ${item.title}`,
+        description: `${isAuction(item) ? "경매 시작 " : ""}${won(item.price)}\n수령처 ${item.pickup}`,
+        imageUrl: item.photo_url,
+        link: { mobileWebUrl: url, webUrl: url },
+      },
+      buttons: [{ title: "물건 보러 가기", link: { mobileWebUrl: url, webUrl: url } }],
+    });
+  } catch { toast("카카오톡 공유를 열지 못했어요. 링크 공유를 써 주세요."); }
+}
+
 async function shareItem(item) {
   // 두근 전용 미리보기(썸네일)가 붙는 주소. 열면 이 물건 화면으로 넘어간다.
-  const url = `${location.origin}${location.pathname.replace(/[^/]*$/, "")}dugeun/?i=${item.id}`;
+  const url = itemUrl(item);
   const text = `[두근] ${item.title}, ${isAuction(item) ? "경매 시작 " : ""}${won(item.price)}`;
   if (navigator.share) {
     let files;

@@ -118,6 +118,10 @@ main > .tabs button[aria-selected=true] { background: var(--cream); color: var(-
 
 /* 빙고판 */
 .board { position: relative; background: var(--forest-deep); padding: 4px; border-radius: 4px; }
+.cheer { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: rgba(13,63,45,.82); cursor: pointer; animation: cheer-in .35s ease-out; }
+.cheer img { width: 92%; height: auto; border-radius: 4px; box-shadow: 0 0 0 4px var(--sun); }
+.cheer.out { opacity: 0; transition: opacity .35s; }
+@keyframes cheer-in { from { opacity: 0; transform: scale(.92); } }
 .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
 .cell {
   position: relative; aspect-ratio: 1; min-width: 0; margin: 0; padding: .25rem; border: 0; border-radius: 2px;
@@ -437,8 +441,11 @@ textarea { resize: vertical; }
 .nav-key svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nav-key:hover { background: rgba(255,243,220,.14); }
 
-#it-share { display: flex; align-items: center; justify-content: center; gap: .5rem; }
+#it-share, #it-kakao { display: flex; align-items: center; justify-content: center; gap: .5rem; }
 .ic-share { width: 1.125rem; height: 1.125rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.btn.kakao { background: var(--sun); color: var(--ink); }
+.btn.kakao:hover { background: var(--peach); }
 
 /* 서트방 바로가기 */
 .social { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; margin: 1.5rem 0 0; }
