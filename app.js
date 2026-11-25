@@ -305,7 +305,12 @@ function score(pid) {
 /* ---------- 공통 UI ---------- */
 let toastTimer;
 function toast(msg, bad) {
-  const t = $("#toast"); t.textContent = msg; t.className = "show" + (bad ? " bad" : "");
+  let t = $("#toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+  t.textContent = msg; t.className = "show" + (bad ? " bad" : "");
+  // 열린 창(모달) 위에도 보이도록 맨 위 층으로 올린다.
+  if (t.showPopover) { t.setAttribute("popover", "manual"); try { t.hidePopover(); } catch { /* 닫힌 상태 */ } t.showPopover(); }
+  else { const dlg = $("#dlg"); (dlg.open ? dlg : document.body).appendChild(t); }
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.className = ""), 3600);
 }
 async function busy(btn, fn) {

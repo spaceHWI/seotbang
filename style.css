@@ -213,6 +213,8 @@ dialog::backdrop { background: rgba(6,30,21,.72); }
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 #toast.bad { background: var(--track-deep); color: #fff; }
+#toast[popover] { inset: auto; left: 50%; bottom: 1.25rem; margin: 0; border: 0; overflow: visible; }
+dialog #toast:not(.bad) { background: var(--forest); color: var(--cream); }
 
 @media (max-width: 26rem) {
   .cell-sub { display: none; }
