@@ -1056,7 +1056,7 @@ function sendKakao(item) {
         imageUrl: item.photo_url,
         link: { mobileWebUrl: url, webUrl: url },
       },
-      buttons: [{ title: "물건 보러 가기", link: { mobileWebUrl: url, webUrl: url } }],
+      buttons: [{ title: "보러 가기", link: { mobileWebUrl: url, webUrl: url } }],
     });
   } catch { toast("카카오톡 공유를 열지 못했어요. 링크 공유를 써 주세요."); }
 }
