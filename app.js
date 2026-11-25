@@ -594,7 +594,7 @@ function cheer() {
   o.innerHTML = `<img src="assets/cheer.webp?v=${Date.now()}" alt="빙고 축하">`;
   const close = () => { o.classList.add("out"); setTimeout(() => o.remove(), 350); };
   o.onclick = close;
-  setTimeout(() => { board.appendChild(o); setTimeout(close, 9200); }, 900);
+  setTimeout(() => { board.appendChild(o); setTimeout(close, 6700); }, 900);
 }
 
 /* ---------- 화면: 참가자 ---------- */
