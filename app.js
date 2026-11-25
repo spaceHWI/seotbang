@@ -105,7 +105,13 @@ function liveApi() {
       if (error) throw new Error(error.message);
       return data.map(s => ({ ...s, photo_url: sb.storage.from(BUCKET).getPublicUrl(s.photo_path).data.publicUrl }));
     },
-    join: (nick, pass, contact) => rpc("bingo_join", { p_nickname: nick, p_pass: pass, p_contact: contact }),
+    async join(nick, pass, contact) {
+      const { data, error } = await sb.rpc("bingo_join", { p_nickname: nick, p_pass: pass, p_contact: contact });
+      // 서버에 연락처 항목이 아직 없으면 연락처 없이 가입시킨다(나중에 두근에서 등록).
+      if (error && error.code === "PGRST202") return rpc("bingo_join", { p_nickname: nick, p_pass: pass });
+      if (error) throw new Error(error.message);
+      return data;
+    },
     myContact: me => rpc("bingo_my_contact", { p_token: me.token }),
     setContact: (me, contact) => rpc("bingo_set_contact", { p_token: me.token, p_contact: contact }),
     itemContact: (me, id) => rpc("bingo_item_contact", { p_token: me.token, p_item: id }),
