@@ -236,6 +236,7 @@ function demoApi() {
       if (!i) throw new Error("없는 물건이에요.");
       if (i.player_id === me.id) throw new Error("내가 올린 물건에는 줄을 설 수 없어요.");
       if (i.status === "done") throw new Error("거래가 끝난 물건이에요.");
+      if (offer != null && offer > 100000000) throw new Error("가격은 1억 원까지 부를 수 있어요.");
       if (i.mode === "auction" && (offer == null || offer < i.price)) throw new Error("시작 가격 이상으로 불러 주세요.");
       if (i.mode !== "auction") offer = null;
       const mine = db.queue.find(q => q.item_id === id && q.player_id === me.id);
@@ -851,6 +852,7 @@ const PIN = '<svg class="pin" viewBox="0 0 16 16" aria-hidden="true"><path d="M8
 const RUNNER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><g transform="translate(32 0) scale(-1 1)"><circle cx="20.500" cy="5.500" r="3.800"/><path d="M18 11.500L14 21M18 12l5.500 3 3-3.500M17 12.500l-5.500.500-2.500 4M14 21l6.500 3-1 8M14 21l-4.500 5.500H3.500"/></g></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
 // 한 손을 든 사람 픽토그램 (경매)
 const RAISER = '<svg class="runner" viewBox="0 0 32 36" aria-hidden="true"><circle cx="15" cy="6.500" r="3.800"/><path d="M15 13v10.500M15 14l5.500-2.500V3M15 14l-4.500 2.500V23M13 23.500V34M17 23.500V34"/></svg>'.replace(/\.500/g, ".5").replace(/\.800/g, ".8");
+const MAX_PRICE = 100000000; // 서버와 같은 상한
 const TALK = '<svg class="ic-share" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4C6.800 4 3 7.200 3 11c0 2.400 1.500 4.500 3.900 5.700L6 20.500l4.300-2.700c.600.100 1.100.100 1.700.100 5.200 0 9-3.100 9-6.900S17.200 4 12 4z"/></svg>'.replace(/\.([0-9])00/g, ".$1");
 const SHARE = '<svg class="ic-share" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3.500M7.500 7.500L12 3l4.500 4.500M5 12v7.500h14V12"/></svg>'.replace(/\.500/g, ".5");
 const needLogin = () => { toast("먼저 가입해 주세요. 가입하면 빙고와 두근을 같이 써요.", true); location.hash = "#/"; };
@@ -1006,6 +1008,7 @@ function openItem(id, picked) {
     if (!state.me) { dlg.close(); return needLogin(); }
     const d = offerIn ? offerIn.value.replace(/\D/g, "") : "";
     if (auction && !d) { if (offerIn) offerIn.focus(); return toast("부를 가격을 적어 주세요.", true); }
+    if (auction && Number(d) > MAX_PRICE) { offerIn.focus(); return toast("가격은 1억 원까지 부를 수 있어요.", true); }
     if (auction && Number(d) < item.price) { offerIn.focus(); return toast(`시작 가격 ${won(item.price)} 이상으로 불러 주세요.`, true); }
     busy(btn, async () => { await api.queueJoin(state.me, id, auction ? Number(d) : null); await again(); toast(pos >= 0 ? "가격을 바꿨어요." : auction ? "손들었어요." : "줄을 섰어요."); });
   };
@@ -1128,6 +1131,7 @@ function openItemForm() {
     if (!title) return toast("물건 이름을 적어 주세요.", true);
     if (!category) return toast("카테고리를 골라 주세요.", true);
     if (!f.free.checked && !digits) return toast(f.mode.value === "auction" ? "시작 가격을 적어 주세요." : "가격을 적거나 나눔을 골라 주세요.", true);
+    if (Number(digits) > MAX_PRICE) return toast("가격은 1억 원까지 적을 수 있어요.", true);
     if (!pickup) return toast("수령처를 적어 주세요.", true);
     busy($("#it-go"), async () => {
       await api.itemPost(state.me, { title, category, pickup, mode: f.mode.value, price: f.free.checked ? 0 : Number(digits), description: f.description.value.trim() }, blob);

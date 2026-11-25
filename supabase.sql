@@ -419,7 +419,8 @@ begin
   if p_category not in ('운동화','운동복','가방·조끼','장비·용품','시계·전자기기','보급·영양','기타') then raise exception '카테고리를 골라 주세요.'; end if;
   if coalesce(p_mode, 'queue') not in ('queue', 'auction') then raise exception '파는 방식을 골라 주세요.'; end if;
   if char_length(coalesce(p_description, '')) > 500 then raise exception '설명은 500자까지 적을 수 있어요.'; end if;
-  if p_price is null or p_price < 0 or p_price > 100000000 then raise exception '가격을 다시 확인해 주세요.'; end if;
+  if p_price is null or p_price < 0 then raise exception '가격을 다시 확인해 주세요.'; end if;
+  if p_price > 100000000 then raise exception '가격은 1억 원까지 적을 수 있어요.'; end if;
   if char_length(btrim(coalesce(p_pickup, ''))) not between 1 and 60 then raise exception '수령처는 1~60자로 적어 주세요.'; end if;
   if p_path !~ ('^' || v_player::text || '/90-[0-9]{10,16}\.jpg$') then raise exception '사진 경로가 맞지 않아요.'; end if;
   if (select count(*) from bingo_items where player_id = v_player and status <> 'done') >= 20 then
@@ -499,7 +500,8 @@ begin
   if v_owner is null then raise exception '없는 물건이에요.'; end if;
   if v_owner = v_player then raise exception '내가 올린 물건에는 줄을 설 수 없어요.'; end if;
   if v_status = 'done' then raise exception '거래가 끝난 물건이에요.'; end if;
-  if p_offer is not null and (p_offer < 0 or p_offer > 100000000) then raise exception '가격을 다시 확인해 주세요.'; end if;
+  if p_offer is not null and p_offer < 0 then raise exception '가격을 다시 확인해 주세요.'; end if;
+  if p_offer is not null and p_offer > 100000000 then raise exception '가격은 1억 원까지 부를 수 있어요.'; end if;
   if v_mode = 'auction' then
     if p_offer is null then raise exception '부를 가격을 적어 주세요.'; end if;
     if p_offer < v_price then raise exception '시작 가격 이상으로 불러 주세요.'; end if;
